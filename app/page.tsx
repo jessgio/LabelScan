@@ -216,7 +216,7 @@ export default function LabelScanner() {
         <div className="flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="block text-sm text-slate-500 mb-1.5">Delete scans older than:</label>
-            <select id="delete-days" className="w-full border border-slate-300 rounded-xl px-4 py-3 text-base bg-white">
+            <select id="delete-days" className="w-full border border-slate-300 rounded-xl px-4 py-3 text-slate bg-white">
               <option value="7">7 days</option>
               <option value="30">30 days</option>
               <option value="90">90 days</option>
