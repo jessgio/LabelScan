@@ -197,15 +197,15 @@ export default function LabelScanner() {
       {/* ====================== STATS ====================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-2xl text-slate-500">Total Scans</p>
+          <p className="text-m1 text-slate-500">Total Scans</p>
           <p className="text-6xl font-bold text-slate-900 mt-2">{totalScans}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-2xl text-slate-500">Total Duplicates</p>
+          <p className="text-m1 text-slate-500">Total Duplicates</p>
           <p className="text-6xl font-bold text-red-600 mt-2">{totalDuplicates}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-2xl text-slate-500">Total Unique Scans</p>
+          <p className="text-m1 text-slate-500">Total Unique Scans</p>
           <p className="text-6xl font-bold text-blue-600 mt-2">{totalUnique}</p>
         </div>
       </div>
@@ -216,7 +216,7 @@ export default function LabelScanner() {
         <div className="flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="block text-sm text-slate-500 mb-1.5">Delete scans older than:</label>
-            <select id="delete-days" className="w-full border border-slate-300 rounded-xl px-4 py-3 text-slate bg-white">
+            <select id="delete-days" className="w-full border border-slate-950 rounded-xl px-4 py-3 text-slate bg-white">
               <option value="7">7 days</option>
               <option value="30">30 days</option>
               <option value="90">90 days</option>
@@ -252,7 +252,7 @@ export default function LabelScanner() {
       <input
         type="text"
         autoFocus
-        className="w-full bg-white p-5 text-2xl border border-slate-300 rounded-2xl mb-8 focus:outline-none focus:border-slate-900"
+        className="w-full bg-white p-5 text-2xl border border-slate-300 rounded-2xl mb-8 focus:outline-none focus:border-slate-900 text-slate-950"
         placeholder="Scan or type label and press Enter"
         value={label}
         onChange={(e) => setLabel(e.target.value)}
