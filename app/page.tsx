@@ -168,7 +168,7 @@ export default function LabelScanner() {
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+            className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-950"
           />
         </div>
         <div>
@@ -177,7 +177,7 @@ export default function LabelScanner() {
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+            className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-950"
           />
         </div>
         <button
