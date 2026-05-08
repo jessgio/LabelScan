@@ -197,15 +197,15 @@ export default function LabelScanner() {
       {/* ====================== STATS ====================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm text-slate-500">Total Scans</p>
+          <p className="text-2xl text-slate-500">Total Scans</p>
           <p className="text-6xl font-bold text-slate-900 mt-2">{totalScans}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm text-slate-500">Total Duplicates</p>
+          <p className="text-2xl text-slate-500">Total Duplicates</p>
           <p className="text-6xl font-bold text-red-600 mt-2">{totalDuplicates}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm text-slate-500">Total Unique Scans</p>
+          <p className="text-2xl text-slate-500">Total Unique Scans</p>
           <p className="text-6xl font-bold text-blue-600 mt-2">{totalUnique}</p>
         </div>
       </div>
