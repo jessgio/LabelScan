@@ -20,6 +20,22 @@ export default function LabelScanner() {
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateLabel, setDuplicateLabel] = useState('');
 
+  // Helper function for delete
+  const deleteOldScans = async (days: number) => {
+  let query = supabase.from('scans').delete();
+
+  if (days > 0) {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    query = query.lt('scanned_at', cutoffDate.toISOString());
+  } else {
+    // Delete all
+    query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+  }
+
+  return await query;
+};
+
   // Load initial data + realtime
   useEffect(() => {
     const loadData = async () => {
@@ -127,63 +143,70 @@ export default function LabelScanner() {
       <h1 className="text-4xl font-bold mb-8 text-slate-900">Label Scanner</h1>
 
       {/* Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         
         {/* Total Scans */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <p className="text-sm text-slate-500">Total Scans</p>
           <p className="text-6xl font-bold text-slate-900 mt-2">{totalScans}</p>
         </div>
-
+      
         {/* Total Duplicates */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <p className="text-sm text-slate-500">Total Duplicates</p>
           <p className="text-6xl font-bold text-red-600 mt-2">{totalDuplicates}</p>
         </div>
-
+      
         {/* Total Unique Scans */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <p className="text-sm text-slate-500">Total Unique Scans</p>
           <p className="text-6xl font-bold text-blue-600 mt-2">{totalUnique}</p>
         </div>
-
-        {/* Delete Old Scans */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <p className="text-sm text-slate-500 mb-2">Delete Old Scans</p>
-          <div className="flex gap-2">
-            <select id="delete-days" className="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-base">
-              <option value="7">Older than 7 days</option>
-              <option value="30">Older than 30 days</option>
-              <option value="90">Older than 90 days</option>
-              <option value="0">Delete ALL</option>
-            </select>
-            <button
-              onClick={async () => {
-                const select = document.getElementById('delete-days') as HTMLSelectElement;
-                const days = parseInt(select.value);
-                const msg = days === 0 
-                  ? "Delete ALL scans permanently?" 
-                  : `Delete scans older than ${days} days?`;
-
-                if (!confirm(msg)) return;
-
-                let query = supabase.from('scans').delete();
-                if (days > 0) {
-                  const cutoff = new Date();
-                  cutoff.setDate(cutoff.getDate() - days);
-                  query = query.lt('scanned_at', cutoff.toISOString());
-                } else {
-                  query = query.neq('id', '00000000-0000-0000-0000-000000000000');
-                }
-
-                const { error } = await query;
-                if (!error) window.location.reload();
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm"
+      </div>
+      
+      {/* Delete Old Scans Section */}
+      <div className="mb-8 border border-slate-200 rounded-2xl p-6 bg-white shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Delete Old Scans</h3>
+        
+        <div className="flex flex-col md:flex-row gap-4 items-end">
+          <div className="flex-1">
+            <label className="block text-sm text-slate-500 mb-1.5">Delete scans older than:</label>
+            <select 
+              id="delete-days" 
+              className="w-full border border-slate-300 rounded-xl px-4 py-3 text-base bg-white"
             >
-              Delete
-            </button>
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+              <option value="0">All scans</option>
+            </select>
           </div>
+      
+          <button
+            onClick={async () => {
+              const select = document.getElementById('delete-days') as HTMLSelectElement;
+              const days = parseInt(select.value);
+      
+              const msg = days === 0 
+                ? "Delete ALL scans permanently? This cannot be undone." 
+                : `Delete scans older than ${days} days?`;
+      
+              if (!confirm(msg)) return;
+      
+              const { error } = await deleteOldScans(days);
+      
+              if (error) {
+                alert('Failed to delete scans. Check console.');
+                console.error(error);
+              } else {
+                alert('Scans deleted successfully');
+                window.location.reload();
+              }
+            }}
+            className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-semibold whitespace-nowrap"
+          >
+            Delete Selected Scans
+          </button>
         </div>
       </div>
 
