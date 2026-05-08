@@ -11,33 +11,43 @@ interface Scan {
 }
 
 export default function AdminDashboard() {
-  const [scans, setScans] = useState<Scan[]>([]);
+  const today = new Date().toISOString().split('T')[0];
+
+  // Date Range
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+
+  // Data
+  const [allScans, setAllScans] = useState<Scan[]>([]);
   const [filteredScans, setFilteredScans] = useState<Scan[]>([]);
+
+  // Search
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Calculated metrics
-  const totalScans = scans.length;
-  const totalDuplicates = scans.filter((s) => s.is_duplicate).length;
-  const totalUnique = new Set(scans.map((s) => s.label)).size; // ← UNIQUE LABELS
+  // Stats
+  const [totalScans, setTotalScans] = useState(0);
+  const [totalDuplicates, setTotalDuplicates] = useState(0);
+  const [totalUnique, setTotalUnique] = useState(0);
 
-  // Load scans + realtime
+  // Load all scans
   useEffect(() => {
     const fetchScans = async () => {
       const { data } = await supabase
         .from('scans')
         .select('*')
-        .order('scanned_at', { ascending: false });
+        .order('scanned_at', { ascending: false })
+        .limit(5000);
 
       if (data) {
-        setScans(data);
-        setFilteredScans(data);
+        setAllScans(data);
       }
       setLoading(false);
     };
 
     fetchScans();
 
+    // Realtime updates
     const channel = supabase
       .channel('admin-scans')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scans' }, () => {
@@ -48,24 +58,45 @@ export default function AdminDashboard() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Search filter
+  // Filter by date range + search
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredScans(scans);
-    } else {
+    let filtered = allScans.filter((scan) => {
+      const scanDate = new Date(scan.scanned_at).toISOString().split('T')[0];
+      return scanDate >= startDate && scanDate <= endDate;
+    });
+
+    // Apply search
+    if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      setFilteredScans(
-        scans.filter((s) => s.label.toLowerCase().includes(term))
+      filtered = filtered.filter((scan) =>
+        scan.label.toLowerCase().includes(term)
       );
     }
-  }, [searchTerm, scans]);
 
+    setFilteredScans(filtered);
+
+    // Update stats based on filtered data
+    setTotalScans(filtered.length);
+    setTotalDuplicates(filtered.filter((s) => s.is_duplicate).length);
+
+    const uniqueLabels = new Set(filtered.map((s) => s.label));
+    setTotalUnique(uniqueLabels.size);
+  }, [startDate, endDate, searchTerm, allScans]);
+
+  // Reset to today
+  const resetToToday = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setStartDate(todayStr);
+    setEndDate(todayStr);
+  };
+
+  // Delete single scan
   const deleteScan = async (id: string) => {
     if (!confirm('Delete this scan?')) return;
 
     const { error } = await supabase.from('scans').delete().eq('id', id);
     if (!error) {
-      setScans((prev) => prev.filter((s) => s.id !== id));
+      setAllScans((prev) => prev.filter((s) => s.id !== id));
     }
   };
 
@@ -76,24 +107,48 @@ export default function AdminDashboard() {
         <a href="/" className="text-blue-600 hover:underline">← Back to Scanner</a>
       </div>
 
-      {/* Summary Stats */}
+      {/* Date Range Controls */}
+      <div className="flex flex-wrap items-end gap-4 mb-8">
+        <div>
+          <label className="block text-sm text-slate-500 mb-1">From</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-slate-500 mb-1">To</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+          />
+        </div>
+        <button
+          onClick={resetToToday}
+          className="bg-slate-800 hover:bg-black text-white px-5 py-2.5 rounded-xl h-[50px]"
+        >
+          Reset to Today
+        </button>
+      </div>
+
+      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-white border border-slate-200 rounded-2xl p-6">
           <p className="text-sm text-slate-500">Total Scans</p>
           <p className="text-5xl font-bold text-slate-900 mt-1">{totalScans}</p>
         </div>
-
         <div className="bg-white border border-slate-200 rounded-2xl p-6">
           <p className="text-sm text-slate-500">Total Duplicates</p>
           <p className="text-5xl font-bold text-red-600 mt-1">{totalDuplicates}</p>
         </div>
-
-        {/* NEW: Total Unique Scans */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6">
           <p className="text-sm text-slate-500">Total Unique Scans</p>
           <p className="text-5xl font-bold text-blue-600 mt-1">{totalUnique}</p>
         </div>
-
         <div className="bg-white border border-slate-200 rounded-2xl p-6 flex items-center justify-center">
           <p className="text-slate-600 text-center">Live updates enabled</p>
         </div>
@@ -110,7 +165,7 @@ export default function AdminDashboard() {
         />
       </div>
 
-      {/* All Scans Table */}
+      {/* Scans Table */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         {loading ? (
           <div className="p-8 text-center">Loading...</div>
@@ -127,7 +182,9 @@ export default function AdminDashboard() {
             <tbody>
               {filteredScans.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-500">No scans found</td>
+                  <td colSpan={4} className="p-8 text-center text-slate-500">
+                    No scans found in this date range
+                  </td>
                 </tr>
               ) : (
                 filteredScans.map((scan, index) => (
