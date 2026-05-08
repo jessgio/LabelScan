@@ -13,68 +13,61 @@ interface Scan {
 
 export default function LabelScanner() {
   const [label, setLabel] = useState('');
+  
+  // ====================== DATE RANGE ======================
+  const today = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+
+  // ====================== STATS ======================
   const [totalScans, setTotalScans] = useState(0);
   const [totalDuplicates, setTotalDuplicates] = useState(0);
   const [totalUnique, setTotalUnique] = useState(0);
+
+  // ====================== DATA ======================
   const [recentScans, setRecentScans] = useState<Scan[]>([]);
+  const [allScans, setAllScans] = useState<Scan[]>([]);
+
+  // ====================== DUPLICATE MODAL ======================
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateLabel, setDuplicateLabel] = useState('');
 
-  // Helper function for delete
-  const deleteOldScans = async (days: number) => {
-  let query = supabase.from('scans').delete();
-
-  if (days > 0) {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-    query = query.lt('scanned_at', cutoffDate.toISOString());
-  } else {
-    // Delete all
-    query = query.neq('id', '00000000-0000-0000-0000-000000000000');
-  }
-
-  return await query;
-};
-
-  // Load initial data + realtime
+  // ====================== LOAD ALL DATA ======================
   useEffect(() => {
-    const loadData = async () => {
+    const loadAllScans = async () => {
       const { data } = await supabase
         .from('scans')
         .select('*')
         .order('scanned_at', { ascending: false })
-        .limit(50);
+        .limit(2000);
 
-      if (data) {
-        setRecentScans(data);
-        setTotalScans(data.length);
-        setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
-
-        const uniqueLabels = new Set(data.map((s) => s.label));
-        setTotalUnique(uniqueLabels.size);
-      }
+      if (data) setAllScans(data);
     };
+    loadAllScans();
+  }, []);
 
-    loadData();
+  // ====================== FILTER BY DATE RANGE ======================
+  useEffect(() => {
+    const filtered = allScans.filter((scan) => {
+      const scanDate = new Date(scan.scanned_at).toISOString().split('T')[0];
+      return scanDate >= startDate && scanDate <= endDate;
+    });
 
-    // Realtime subscription
+    setRecentScans(filtered.slice(0, 30));
+    setTotalScans(filtered.length);
+    setTotalDuplicates(filtered.filter((s) => s.is_duplicate).length);
+
+    const uniqueLabels = new Set(filtered.map((s) => s.label));
+    setTotalUnique(uniqueLabels.size);
+  }, [startDate, endDate, allScans]);
+
+  // ====================== REALTIME UPDATES ======================
+  useEffect(() => {
     const channel = supabase
       .channel('live-scans')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scans' }, (payload) => {
         const newScan = payload.new as Scan;
-
-        setRecentScans((prev) => {
-          const alreadyExists = prev.some((s) => s.label === newScan.label);
-          if (!alreadyExists) {
-            setTotalUnique((u) => u + 1);
-          }
-          return [newScan, ...prev].slice(0, 50);
-        });
-
-        setTotalScans((prev) => prev + 1);
-        if (newScan.is_duplicate) {
-          setTotalDuplicates((prev) => prev + 1);
-        }
+        setAllScans((prev) => [newScan, ...prev]);
       })
       .subscribe();
 
@@ -83,6 +76,14 @@ export default function LabelScanner() {
     };
   }, []);
 
+  // ====================== RESET TO TODAY ======================
+  const resetToToday = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setStartDate(todayStr);
+    setEndDate(todayStr);
+  };
+
+  // ====================== HANDLE SCAN ======================
   const handleScan = async (scannedLabel: string) => {
     const trimmed = scannedLabel.trim();
     if (!trimmed) return;
@@ -108,6 +109,7 @@ export default function LabelScanner() {
     setLabel('');
   };
 
+  // ====================== EXPORT TO CSV ======================
   const exportToCSV = async () => {
     const { data } = await supabase
       .from('scans')
@@ -138,107 +140,131 @@ export default function LabelScanner() {
     link.click();
   };
 
+  // ====================== DELETE OLD SCANS ======================
+  const deleteOldScans = async (days: number) => {
+    let query = supabase.from('scans').delete();
+
+    if (days > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      query = query.lt('scanned_at', cutoff.toISOString());
+    } else {
+      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+    }
+
+    const { error } = await query;
+    return { error };
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-8 bg-slate-50 min-h-screen">
       <h1 className="text-4xl font-bold mb-8 text-slate-900">Label Scanner</h1>
 
-      {/* Stats Section */}
+      {/* ====================== DATE RANGE ====================== */}
+      <div className="flex flex-wrap items-end gap-4 mb-8">
+        <div>
+          <label className="block text-sm text-slate-500 mb-1">From</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-slate-500 mb-1">To</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+          />
+        </div>
+        <button
+          onClick={resetToToday}
+          className="bg-slate-800 hover:bg-black text-white px-5 py-2.5 rounded-xl"
+        >
+          Reset to Today
+        </button>
+        <button
+          onClick={exportToCSV}
+          className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl"
+        >
+          Export to CSV
+        </button>
+      </div>
+
+      {/* ====================== STATS ====================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        
-        {/* Total Scans */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <p className="text-sm text-slate-500">Total Scans</p>
           <p className="text-6xl font-bold text-slate-900 mt-2">{totalScans}</p>
         </div>
-      
-        {/* Total Duplicates */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <p className="text-sm text-slate-500">Total Duplicates</p>
           <p className="text-6xl font-bold text-red-600 mt-2">{totalDuplicates}</p>
         </div>
-      
-        {/* Total Unique Scans */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
           <p className="text-sm text-slate-500">Total Unique Scans</p>
           <p className="text-6xl font-bold text-blue-600 mt-2">{totalUnique}</p>
         </div>
       </div>
-      
-      {/* Delete Old Scans Section */}
+
+      {/* ====================== DELETE OLD SCANS ====================== */}
       <div className="mb-8 border border-slate-200 rounded-2xl p-6 bg-white shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">Delete Old Scans</h3>
-        
         <div className="flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="block text-sm text-slate-500 mb-1.5">Delete scans older than:</label>
-            <select 
-              id="delete-days" 
-              className="w-full border border-slate-300 rounded-xl px-4 py-3 text-base bg-white"
-            >
+            <select id="delete-days" className="w-full border border-slate-300 rounded-xl px-4 py-3 text-base bg-white">
               <option value="7">7 days</option>
               <option value="30">30 days</option>
               <option value="90">90 days</option>
               <option value="0">All scans</option>
             </select>
           </div>
-      
           <button
             onClick={async () => {
               const select = document.getElementById('delete-days') as HTMLSelectElement;
               const days = parseInt(select.value);
-      
               const msg = days === 0 
-                ? "Delete ALL scans permanently? This cannot be undone." 
+                ? "Delete ALL scans permanently?" 
                 : `Delete scans older than ${days} days?`;
-      
+
               if (!confirm(msg)) return;
-      
+
               const { error } = await deleteOldScans(days);
-      
               if (error) {
-                alert('Failed to delete scans. Check console.');
-                console.error(error);
+                alert('Failed to delete scans');
               } else {
                 alert('Scans deleted successfully');
                 window.location.reload();
               }
             }}
-            className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-semibold whitespace-nowrap"
+            className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-semibold"
           >
             Delete Selected Scans
           </button>
         </div>
       </div>
 
-      {/* Scanner Input */}
-      <div className="mb-8">
-        <input
-          type="text"
-          autoFocus
-          className="w-full bg-white p-5 text-2xl border border-slate-300 rounded-2xl focus:outline-none focus:border-slate-900 placeholder:text-slate-400"
-          placeholder="Scan or type label and press Enter"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleScan(label)}
-        />
-      </div>
+      {/* ====================== SCANNER INPUT ====================== */}
+      <input
+        type="text"
+        autoFocus
+        className="w-full bg-white p-5 text-2xl border border-slate-300 rounded-2xl mb-8 focus:outline-none focus:border-slate-900"
+        placeholder="Scan or type label and press Enter"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleScan(label)}
+      />
 
-      {/* Export Button */}
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={exportToCSV}
-          className="bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-xl font-semibold"
-        >
-          Export to CSV
-        </button>
-      </div>
+      {/* ====================== RECENT SCANS TABLE ====================== */}
+      <h2 className="text-2xl font-semibold mb-4 text-slate-900">
+        Scans from {startDate} to {endDate}
+      </h2>
 
-      {/* Recent Scans Table */}
-      <div className="mb-4">
-        <h2 className="text-2xl font-semibold text-slate-900">Recent Scans</h2>
-      </div>
-
-      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm mb-8">
         <table className="w-full text-left">
           <thead className="bg-slate-800 text-white">
             <tr>
@@ -250,15 +276,13 @@ export default function LabelScanner() {
           <tbody>
             {recentScans.length === 0 ? (
               <tr>
-                <td colSpan={3} className="p-8 text-center text-slate-500">No scans yet</td>
+                <td colSpan={3} className="p-8 text-center text-slate-500">No scans in this date range</td>
               </tr>
             ) : (
               recentScans.map((scan, index) => (
                 <tr key={scan.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-100"}>
                   <td className="p-4 font-mono text-lg text-slate-900">{scan.label}</td>
-                  <td className="p-4 text-slate-600">
-                    {new Date(scan.scanned_at).toLocaleString()}
-                  </td>
+                  <td className="p-4 text-slate-600">{new Date(scan.scanned_at).toLocaleString()}</td>
                   <td className="p-4">
                     {scan.is_duplicate ? (
                       <span className="inline-block px-4 py-1 rounded-full bg-red-600 text-white text-sm font-semibold">
@@ -277,6 +301,7 @@ export default function LabelScanner() {
         </table>
       </div>
 
+      {/* Duplicate Modal */}
       {showDuplicate && (
         <DuplicateModal
           label={duplicateLabel}
