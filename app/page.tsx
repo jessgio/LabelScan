@@ -287,56 +287,57 @@ export default function LabelScanner() {
 
      
      {/* ====================== RECENT SCANS TABLE ====================== */}
-    <h2 className="text-2xl font-semibold mb-4 text-slate-900">
-      Scans from {startDate} to {endDate}
-    </h2>
+      <h2 className="text-2xl font-semibold mb-4 text-slate-900">
+        Scans from {startDate} to {endDate}
+      </h2>
 
-    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-      <table className="w-full text-left">
-        <thead className="bg-slate-800 text-white">
-          <tr>
-            <th className="p-4 font-semibold">Label</th>
-            <th className="p-4 font-semibold">Time Scanned</th>
-            <th className="p-4 font-semibold">Status</th>
-            <th className="p-4 font-semibold w-24">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {recentScans.length === 0 ? (
+      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+        <table className="w-full text-left">
+          <thead className="bg-slate-800 text-white">
             <tr>
-              <td colSpan={4} className="p-8 text-center text-slate-500">
-                No scans in this date range
-              </td>
+              <th className="p-4 font-semibold">Label</th>
+              <th className="p-4 font-semibold">Time Scanned</th>
+              <th className="p-4 font-semibold">Status</th>
+              <th className="p-4 font-semibold w-24">Action</th>
             </tr>
-          ) : (
-            recentScans.map((scan, index) => (
-              <tr key={scan.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-100"}>
-                <td className="p-4 font-mono text-lg text-slate-900">{scan.label}</td>
-                <td className="p-4 text-slate-600">
-                  {new Date(scan.scanned_at).toLocaleString()}
-                </td>
-                <td className="p-4">
-                  {scan.is_duplicate ? (
-                    <span className="inline-block px-4 py-1 rounded-full bg-red-600 text-white text-sm font-semibold">
-                      DUPLICATE
-                    </span>
-                  ) : (
-                    <span className="inline-block px-4 py-1 rounded-full bg-green-600 text-white text-sm font-semibold">
-                      NEW
-                    </span>
-                  )}
-                </td>
-                <td className="p-4">
-                  <button
-                    onClick={() => deleteSingleScan(scan.id)}
-                    className="text-red-600 hover:text-red-800 font-medium text-sm"
-                  >
-                    Delete
-                  </button>
+          </thead>
+          <tbody>
+            {recentScans.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="p-8 text-center text-slate-500">
+                  No scans in this date range
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              recentScans.map((scan, index) => (
+                <tr key={scan.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-100"}>
+                  <td className="p-4 font-mono text-lg text-slate-900">{scan.label}</td>
+                  <td className="p-4 text-slate-600">
+                    {new Date(scan.scanned_at).toLocaleString()}
+                  </td>
+                  <td className="p-4">
+                    {scan.is_duplicate ? (
+                      <span className="inline-block px-4 py-1 rounded-full bg-red-600 text-white text-sm font-semibold">
+                        DUPLICATE
+                      </span>
+                    ) : (
+                      <span className="inline-block px-4 py-1 rounded-full bg-green-600 text-white text-sm font-semibold">
+                        NEW
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    <button
+                      onClick={() => deleteSingleScan(scan.id)}
+                      className="text-red-600 hover:text-red-800 font-medium text-sm"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
