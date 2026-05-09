@@ -341,3 +341,4 @@ export default function LabelScanner() {
         </table>
       </div>
     </div>
+  )}
