@@ -225,7 +225,7 @@ export default function LabelScanner() {
             placeholder="Type to search all scans..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full border border-slate-300 px-4 py-3 rounded-2xl text-lg focus:outline-none focus:border-slate-900"
+            className="w-full border border-slate-300 px-4 py-3 rounded-2xl text-lg focus:outline-none focus:border-slate-900 text-slate-900"
           />
         </div>
 
@@ -238,7 +238,7 @@ export default function LabelScanner() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+                className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-900"
               />
             </div>
             <div>
@@ -247,7 +247,7 @@ export default function LabelScanner() {
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+                className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-900"
               />
             </div>
             <button
@@ -269,15 +269,15 @@ export default function LabelScanner() {
       {/* ====================== STATS ====================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-m1 text-slate-500">Total Scans</p>
+          <p className="text-m4 text-slate-500">Total Scans</p>
           <p className="text-6xl font-bold text-slate-900 mt-2">{totalScans}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-m1 text-slate-500">Total Duplicates</p>
+          <p className="text-m4 text-slate-500">Total Duplicates</p>
           <p className="text-6xl font-bold text-red-600 mt-2">{totalDuplicates}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-m1 text-slate-500">Total Unique Scans</p>
+          <p className="text-m4 text-slate-500">Total Unique Scans</p>
           <p className="text-6xl font-bold text-blue-600 mt-2">{totalUnique}</p>
         </div>
       </div>
