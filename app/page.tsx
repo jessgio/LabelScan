@@ -34,7 +34,7 @@ export default function LabelScanner() {
 
   // ====================== CURRENT PAGE/NEXT PAGE ===============
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 20;
+  const ITEMS_PER_PAGE = 100;
 
   // ====================== DELETE SINGLE SCAN ======================
   // Delete a single scan
@@ -69,7 +69,7 @@ export default function LabelScanner() {
         .from('scans')
         .select('*')
         .order('scanned_at', { ascending: false })
-        .limit(2000);
+        .limit(10000);
 
       if (data) setAllScans(data);
     };
@@ -254,10 +254,10 @@ export default function LabelScanner() {
           <div className="flex-1">
             <label className="block text-sm text-slate-500 mb-1.5">Delete scans older than:</label>
             <select id="delete-days" className="w-full border border-slate-950 rounded-xl px-4 py-3 text-slate bg-white">
-              <option value="7">7 days</option>
-              <option value="30">30 days</option>
-              <option value="90">90 days</option>
-              <option value="0">All scans</option>
+              <option value="7" className="text-slate-500">7 days</option>
+              <option value="30" className="text-slate-500">30 days</option>
+              <option value="90" className="text-slate-500">90 days</option>
+              <option value="0" className="text-slate-500">All scans</option>
             </select>
           </div>
           <button
@@ -359,7 +359,7 @@ export default function LabelScanner() {
         <button
           onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
           disabled={currentPage === 1}
-          className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100"
+          className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
         >
           ← Previous
         </button>
@@ -371,7 +371,7 @@ export default function LabelScanner() {
         <button
           onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
           disabled={currentPage === totalPages}
-          className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100"
+          className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
         >
           Next →
         </button>
