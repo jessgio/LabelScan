@@ -36,6 +36,11 @@ export default function LabelScanner() {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 100;
 
+  // ======================= ADD SEARCH FIELD ====================
+  // Global Search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
   // ====================== DELETE SINGLE SCAN ======================
   // Delete a single scan
   const deleteSingleScan = async (id: string) => {
@@ -79,20 +84,33 @@ export default function LabelScanner() {
   // ====================== FILTER BY DATE RANGE ======================
   // Filter by date range + pagination
   useEffect(() => {
-    const filtered = allScans.filter((scan) => {
-      const scanDate = new Date(scan.scanned_at).toISOString().split('T')[0];
-      return scanDate >= startDate && scanDate <= endDate;
-    });
+  let filtered = [...allScans];
 
-    // Update stats (these should always count all records in the range)
+  // If searching, search the entire database
+    if (searchTerm.trim() !== '') {
+      const term = searchTerm.toLowerCase();
+      filtered = allScans.filter((scan) =>
+        scan.label.toLowerCase().includes(term)
+      );
+      setIsSearching(true);
+    } else {
+      // Normal date range filtering
+      filtered = filtered.filter((scan) => {
+        const scanDate = new Date(scan.scanned_at).toISOString().split('T')[0];
+        return scanDate >= startDate && scanDate <= endDate;
+      });
+      setIsSearching(false);
+    }
+
+    // Pagination reset when search or date changes
     setRecentScans(filtered);
+    setCurrentPage(1);
+
+    // Update stats based on current view
     setTotalScans(filtered.length);
     setTotalDuplicates(filtered.filter((s) => s.is_duplicate).length);
     setTotalUnique(new Set(filtered.map((s) => s.label)).size);
-
-    // Reset to first page when date range changes
-    setCurrentPage(1);
-  }, [startDate, endDate, allScans]);
+  }, [searchTerm, startDate, endDate, allScans]);
 
   // ====================== REALTIME UPDATES ======================
   useEffect(() => {
@@ -196,39 +214,56 @@ export default function LabelScanner() {
   return (
     <div className="max-w-5xl mx-auto p-8 bg-slate-50 min-h-screen">
       <h1 className="text-4xl font-bold mb-8 text-slate-900">Label Scanner</h1>
+      
+      {/* ====================== SEARCH + DATE RANGE ====================== */}
+      <div className="mb-8">
+        {/* Global Search */}
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-black mb-1">Search Entire Database</label>
+          <input
+            type="text"
+            placeholder="Type to search all scans..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full border border-slate-300 px-4 py-3 rounded-2xl text-lg focus:outline-none focus:border-slate-900"
+          />
+        </div>
 
-      {/* ====================== DATE RANGE ====================== */}
-      <div className="flex flex-wrap items-end gap-4 mb-8">
-        <div>
-          <label className="block text-sm text-slate-500 mb-1">From</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-950"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-slate-500 mb-1">To</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-950"
-          />
-        </div>
-        <button
-          onClick={resetToToday}
-          className="bg-slate-800 hover:bg-black text-white px-5 py-2.5 rounded-xl"
-        >
-          Reset to Today
-        </button>
-        <button
-          onClick={exportToCSV}
-          className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl"
-        >
-          Export to CSV
-        </button>
+        {/* Date Range (only show when not searching) */}
+        {!isSearching && (
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-black mb-1">From</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-black mb-1">To</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="border border-slate-300 px-4 py-2 rounded-xl text-lg"
+              />
+            </div>
+            <button
+              onClick={resetToToday}
+              className="bg-slate-800 hover:bg-black text-white px-5 py-2.5 rounded-xl h-[50px]"
+            >
+              Reset to Today
+            </button>
+            <button
+              onClick={exportToCSV}
+              className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl h-[50px]"
+            >
+              Export to CSV
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ====================== STATS ====================== */}
@@ -299,8 +334,9 @@ export default function LabelScanner() {
      
      {/* ====================== RECENT SCANS TABLE ====================== */}
     <h2 className="text-2xl font-semibold mb-4 text-slate-900">
-      Scans from {startDate} to {endDate} 
-      <span className="text-lg text-slate-500 ml-2">({recentScans.length} total)</span>
+      {isSearching 
+      ? `Search Results for "${searchTerm}"` 
+      : `Scans from ${startDate} to ${endDate}`}
     </h2>
 
     <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
