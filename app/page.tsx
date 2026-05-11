@@ -134,10 +134,24 @@ export default function LabelScanner() {
     await fetchData();
   };
 
-  // ====================== REALTIME UPDATES (TEMPORARILY DISABLED) ======================
-  // useEffect(() => {
-    // fetchData();
-  // }, [startDate, endDate, searchTerm]);
+  // ====================== REALTIME UPDATES ======================
+  useEffect(() => {
+    const channel = supabase
+      .channel('live-scans')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'scans' },
+        () => {
+          // Refresh data when a new scan is inserted
+          fetchData();
+        }
+      )
+      .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [startDate, endDate, searchTerm]);
     
   // ====================== RESET TO TODAY ======================
   const resetToToday = () => {
