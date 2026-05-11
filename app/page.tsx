@@ -73,43 +73,56 @@ export default function LabelScanner() {
   // ====================== STABLE DATA FETCH FUNCTION ======================
   const fetchData = async () => {
     setIsLoading(true);
-    console.log("→ Fetching data from Supabase...");
+    console.log("→ Fetching data from Supabase in chunks...");
   
     try {
-      let query = supabase.from('scans').select('*');
+      let allData: Scan[] = [];
+      const CHUNK_SIZE = 1000;
+      let start = 0;
+      let hasMore = true;
   
-      if (searchTerm.trim() !== '') {
-        // Global search
-        query = query.ilike('label', `%${searchTerm}%`);
-      } else {
-        // Date range filter
-        const start = `${startDate}T00:00:00`;
-        const end = `${endDate}T23:59:59.999`;
-        query = query.gte('scanned_at', start).lte('scanned_at', end);
+      while (hasMore) {
+        let query = supabase.from('scans').select('*');
+  
+        if (searchTerm.trim() !== '') {
+          query = query.ilike('label', `%${searchTerm}%`);
+        } else {
+          const startDateTime = `${startDate}T00:00:00`;
+          const endDateTime = `${endDate}T23:59:59.999`;
+          query = query.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
+        }
+  
+        const { data, error } = await query
+          .order('scanned_at', { ascending: false })
+          .range(start, start + CHUNK_SIZE - 1);
+  
+        if (error) {
+          console.error("Supabase Error:", error);
+          alert("Failed to fetch data: " + error.message);
+          break;
+        }
+  
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          start += CHUNK_SIZE;
+        } else {
+          hasMore = false;
+        }
+  
+        // Safety break in case of very large data
+        if (data && data.length < CHUNK_SIZE) {
+          hasMore = false;
+        }
       }
   
-      const { data, error } = await query
-        .order('scanned_at', { ascending: false })
-        .limit(100000);
+      console.log("✓ Data received:", allData.length, "records");
+      setRecentScans([...allData]);
+      setTotalScans(allData.length);
+      setTotalDuplicates(allData.filter((s) => s.is_duplicate).length);
+      setTotalUnique(new Set(allData.map((s) => s.label)).size);
   
-      if (error) {
-        console.error("Supabase Error:", error);
-        alert("Failed to fetch data: " + error.message);
-        return;
-      }
-  
-      if (data) {
-        console.log("✓ Data received:", data.length, "records");
-  
-        // Force fresh state update
-        setRecentScans([...data]);
-        setTotalScans(data.length);
-        setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
-        setTotalUnique(new Set(data.map((s) => s.label)).size);
-      }
     } catch (err) {
-      console.error("Unexpected fetch error:", err);
-      alert("Unexpected error while fetching data");
+      console.error("Unexpected error:", err);
     } finally {
       setIsLoading(false);
     }
