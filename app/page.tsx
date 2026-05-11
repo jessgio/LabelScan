@@ -74,13 +74,13 @@ export default function LabelScanner() {
   const fetchData = async () => {
     setIsLoading(true);
   
+    console.log("Fetching data with:", { startDate, endDate, searchTerm });
+  
     let query = supabase.from('scans').select('*');
   
     if (searchTerm.trim() !== '') {
-      // Search across the entire database
       query = query.ilike('label', `%${searchTerm}%`);
     } else {
-      // Filter by selected date range
       const start = `${startDate}T00:00:00`;
       const end = `${endDate}T23:59:59.999`;
       query = query.gte('scanned_at', start).lte('scanned_at', end);
@@ -88,16 +88,15 @@ export default function LabelScanner() {
   
     const { data, error } = await query
       .order('scanned_at', { ascending: false })
-      .limit(2000); // Safe and sufficient limit
+      .limit(2000);
   
     if (error) {
-      console.error('Error fetching data:', error);
-      alert('Failed to fetch data');
+      console.error("Supabase Error:", error);
+      alert("Supabase Error: " + error.message); // ← This will show a popup
     } else if (data) {
+      console.log("Data received:", data.length, "records");
       setRecentScans(data);
       setCurrentPage(1);
-  
-      // Update stats
       setTotalScans(data.length);
       setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
       setTotalUnique(new Set(data.map((s) => s.label)).size);
@@ -105,11 +104,6 @@ export default function LabelScanner() {
   
     setIsLoading(false);
   };
-
-// Run fetchData when date range or search term changes
-useEffect(() => {
-  fetchData();
-}, [startDate, endDate, searchTerm]);
 
   // ====================== REALTIME UPDATES ======================
   useEffect(() => {
