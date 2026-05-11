@@ -70,7 +70,6 @@ export default function LabelScanner() {
     }
   };
 
-  // ====================== FETCH DATA FROM SUPABASE ======================
   // ====================== STABLE DATA FETCH FUNCTION ======================
   const fetchData = async () => {
     setIsLoading(true);
@@ -206,33 +205,7 @@ export default function LabelScanner() {
     return { error };
   };
 
-  // ==================== ADD REFRESH BUTTON ====================
-  const refreshData = async () => {
-    console.log("Refresh button clicked");
-  
-    try {
-      const { data, error } = await supabase
-        .from('scans')
-        .select('*')
-        .order('scanned_at', { ascending: false })
-        .limit(2000);
-  
-      if (error) {
-        console.error("Supabase Error:", error);
-        alert("Supabase Error: " + error.message);
-      } else {
-        console.log("Data received:", data.length, "records");
-        setRecentScans(data);
-        setTotalScans(data.length);
-        setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
-        setTotalUnique(new Set(data.map((s) => s.label)).size);
-        alert(`Refreshed! Loaded ${data.length} records.`);
-      }
-    } catch (err) {
-      console.error("Unexpected error:", err);
-    }
-  };
-
+ 
   const totalPages = Math.ceil(recentScans.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
