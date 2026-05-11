@@ -71,51 +71,62 @@ export default function LabelScanner() {
   };
 
   // ====================== FETCH DATA FROM SUPABASE ======================
+  // ====================== STABLE DATA FETCH FUNCTION ======================
   const fetchData = async () => {
     setIsLoading(true);
+    console.log("→ Fetching data from Supabase...");
   
-    console.log("Fetching data with:", { startDate, endDate, searchTerm });
+    try {
+      let query = supabase.from('scans').select('*');
   
-    let query = supabase.from('scans').select('*');
+      if (searchTerm.trim() !== '') {
+        // Global search
+        query = query.ilike('label', `%${searchTerm}%`);
+      } else {
+        // Date range filter
+        const start = `${startDate}T00:00:00`;
+        const end = `${endDate}T23:59:59.999`;
+        query = query.gte('scanned_at', start).lte('scanned_at', end);
+      }
   
-    if (searchTerm.trim() !== '') {
-      query = query.ilike('label', `%${searchTerm}%`);
-    } else {
-      const start = `${startDate}T00:00:00`;
-      const end = `${endDate}T23:59:59.999`;
-      query = query.gte('scanned_at', start).lte('scanned_at', end);
+      const { data, error } = await query
+        .order('scanned_at', { ascending: false })
+        .limit(2000);
+  
+      if (error) {
+        console.error("Supabase Error:", error);
+        alert("Failed to fetch data: " + error.message);
+        return;
+      }
+  
+      if (data) {
+        console.log("✓ Data received:", data.length, "records");
+  
+        // Force fresh state update
+        setRecentScans([...data]);
+        setTotalScans(data.length);
+        setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
+        setTotalUnique(new Set(data.map((s) => s.label)).size);
+      }
+    } catch (err) {
+      console.error("Unexpected fetch error:", err);
+      alert("Unexpected error while fetching data");
+    } finally {
+      setIsLoading(false);
     }
+  };
   
-    const { data, error } = await query
-      .order('scanned_at', { ascending: false })
-      .limit(2000);
-  
-    if (error) {
-      console.error("Supabase Error:", error);
-      alert("Supabase Error: " + error.message); // ← This will show a popup
-    } else if (data) {
-      console.log("Data received:", data.length, "records");
-      setRecentScans(data);
-      setCurrentPage(1);
-      setTotalScans(data.length);
-      setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
-      setTotalUnique(new Set(data.map((s) => s.label)).size);
-    }
-  
-    setIsLoading(false);
+  // ====================== STABLE REFRESH FUNCTION ======================
+  const refreshData = async () => {
+    console.log("Refresh button clicked");
+    await fetchData();
   };
 
   // ====================== REALTIME UPDATES (TEMPORARILY DISABLED) ======================
-  // useEffect(() => {
-  //   const channel = supabase.channel('live-scans')
-  //     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scans' }, () => {
-  //       fetchData();
-  //     })
-  //     .subscribe();
-  //   return () => supabase.removeChannel(channel);
-  // }, []);
-
-  
+  useEffect(() => {
+    fetchData();
+  }, [startDate, endDate, searchTerm]);
+    
   // ====================== RESET TO TODAY ======================
   const resetToToday = () => {
     const todayStr = new Date().toISOString().split('T')[0];
