@@ -132,13 +132,10 @@ export default function LabelScanner() {
   const refreshData = async () => {
     console.log("Refresh button clicked");
   
-    // Auto-reset date range to today
+    // Reset date range to today
     const todayStr = new Date().toISOString().split('T')[0];
     setStartDate(todayStr);
     setEndDate(todayStr);
-  
-    // Then fetch fresh data
-    await fetchData();
   };
 
   // ====================== REALTIME UPDATES ======================
@@ -155,11 +152,16 @@ export default function LabelScanner() {
       )
       .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [startDate, endDate, searchTerm]);
-    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [startDate, endDate, searchTerm]);
+
+  // ====================== AUTO FETCH DATA ======================
+  useEffect(() => {
+    fetchData();
+  }, [startDate, endDate, searchTerm]);
+  
   // ====================== RESET TO TODAY ======================
   const resetToToday = () => {
     const todayStr = new Date().toISOString().split('T')[0];
