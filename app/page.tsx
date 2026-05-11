@@ -90,7 +90,7 @@ export default function LabelScanner() {
   
       const { data, error } = await query
         .order('scanned_at', { ascending: false })
-        .limit(2000);
+        .limit(100000);
   
       if (error) {
         console.error("Supabase Error:", error);
@@ -122,9 +122,9 @@ export default function LabelScanner() {
   };
 
   // ====================== REALTIME UPDATES (TEMPORARILY DISABLED) ======================
-  useEffect(() => {
-    fetchData();
-  }, [startDate, endDate, searchTerm]);
+  // useEffect(() => {
+    // fetchData();
+  // }, [startDate, endDate, searchTerm]);
     
   // ====================== RESET TO TODAY ======================
   const resetToToday = () => {
