@@ -105,21 +105,17 @@ export default function LabelScanner() {
     setIsLoading(false);
   };
 
-  // ====================== REALTIME UPDATES ======================
-  useEffect(() => {
-    const channel = supabase
-      .channel('live-scans')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scans' }, (payload) => {
-        const newScan = payload.new as Scan;
-        setAllScans((prev) => [newScan, ...prev]);
-      })
-      .subscribe();
+  // ====================== REALTIME UPDATES (TEMPORARILY DISABLED) ======================
+  // useEffect(() => {
+  //   const channel = supabase.channel('live-scans')
+  //     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scans' }, () => {
+  //       fetchData();
+  //     })
+  //     .subscribe();
+  //   return () => supabase.removeChannel(channel);
+  // }, []);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
+  
   // ====================== RESET TO TODAY ======================
   const resetToToday = () => {
     const todayStr = new Date().toISOString().split('T')[0];
