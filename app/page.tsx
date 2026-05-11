@@ -206,6 +206,20 @@ export default function LabelScanner() {
     return { error };
   };
 
+  // ==================== ADD REFRESH BUTTON ====================
+  const refreshData = async () => {
+    const { data } = await supabase
+      .from('scans')
+      .select('*')
+      .order('scanned_at', { ascending: false })
+      .limit(15000);
+  
+    if (data) {
+      setAllScans(data);
+      console.log('Data refreshed');
+    }
+  };
+
   const totalPages = Math.ceil(recentScans.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -214,6 +228,13 @@ export default function LabelScanner() {
   return (
     <div className="max-w-5xl mx-auto p-8 bg-slate-50 min-h-screen">
       <h1 className="text-4xl font-bold mb-8 text-slate-900">Label Scanner</h1>
+
+      <button
+        onClick={refreshData}
+        className="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl"
+      >
+        Refresh Data
+      </button>
       
       {/* ====================== SEARCH + DATE RANGE ====================== */}
       <div className="mb-8">
@@ -333,85 +354,85 @@ export default function LabelScanner() {
 
      
      {/* ====================== RECENT SCANS TABLE ====================== */}
-    <h2 className="text-2xl font-semibold mb-4 text-slate-900">
-      {isSearching 
-      ? `Search Results for "${searchTerm}"` 
-      : `Scans from ${startDate} to ${endDate}`}
-    </h2>
-
-    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-      <table className="w-full text-left">
-        <thead className="bg-slate-800 text-white">
-          <tr>
-            <th className="p-4 font-semibold">Label</th>
-            <th className="p-4 font-semibold">Time Scanned</th>
-            <th className="p-4 font-semibold">Status</th>
-            <th className="p-4 font-semibold w-24">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {paginatedScans.length === 0 ? (
+      <h2 className="text-2xl font-semibold mb-4 text-slate-900">
+        {isSearching 
+        ? `Search Results for "${searchTerm}"` 
+        : `Scans from ${startDate} to ${endDate}`}
+      </h2>
+  
+      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+        <table className="w-full text-left">
+          <thead className="bg-slate-800 text-white">
             <tr>
-              <td colSpan={4} className="p-8 text-center text-slate-500">
-                No scans in this date range
-              </td>
+              <th className="p-4 font-semibold">Label</th>
+              <th className="p-4 font-semibold">Time Scanned</th>
+              <th className="p-4 font-semibold">Status</th>
+              <th className="p-4 font-semibold w-24">Action</th>
             </tr>
-          ) : (
-            paginatedScans.map((scan, index) => (
-              <tr key={scan.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-100"}>
-                <td className="p-4 font-mono text-lg text-slate-900">{scan.label}</td>
-                <td className="p-4 text-slate-600">
-                  {new Date(scan.scanned_at).toLocaleString()}
-                </td>
-                <td className="p-4">
-                  {scan.is_duplicate ? (
-                    <span className="inline-block px-4 py-1 rounded-full bg-red-600 text-white text-sm font-semibold">
-                      DUPLICATE
-                    </span>
-                  ) : (
-                    <span className="inline-block px-4 py-1 rounded-full bg-green-600 text-white text-sm font-semibold">
-                      NEW
-                    </span>
-                  )}
-                </td>
-                <td className="p-4">
-                  <button
-                    onClick={() => deleteSingleScan(scan.id)}
-                    className="text-red-600 hover:text-red-800 font-medium text-sm"
-                  >
-                    Delete
-                  </button>
+          </thead>
+          <tbody>
+            {paginatedScans.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="p-8 text-center text-slate-500">
+                  No scans in this date range
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-
-    {/* Pagination Controls */}
-    {paginatedScans.length > 0 && totalPages > 1 && (
-      <div className="flex justify-between items-center mt-4">
-        <button
-          onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
-          disabled={currentPage === 1}
-          className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
-        >
-          ← Previous
-        </button>
-
-        <span className="text-slate-600">
-          Page {currentPage} of {totalPages}
-        </span>
-
-        <button
-          onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
-          disabled={currentPage === totalPages}
-          className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
-        >
-          Next →
-        </button>
+            ) : (
+              paginatedScans.map((scan, index) => (
+                <tr key={scan.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-100"}>
+                  <td className="p-4 font-mono text-lg text-slate-900">{scan.label}</td>
+                  <td className="p-4 text-slate-600">
+                    {new Date(scan.scanned_at).toLocaleString()}
+                  </td>
+                  <td className="p-4">
+                    {scan.is_duplicate ? (
+                      <span className="inline-block px-4 py-1 rounded-full bg-red-600 text-white text-sm font-semibold">
+                        DUPLICATE
+                      </span>
+                    ) : (
+                      <span className="inline-block px-4 py-1 rounded-full bg-green-600 text-white text-sm font-semibold">
+                        NEW
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    <button
+                      onClick={() => deleteSingleScan(scan.id)}
+                      className="text-red-600 hover:text-red-800 font-medium text-sm"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
-    )}
-    </div>
+  
+      {/* Pagination Controls */}
+      {paginatedScans.length > 0 && totalPages > 1 && (
+        <div className="flex justify-between items-center mt-4">
+          <button
+            onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
+          >
+            ← Previous
+          </button>
+  
+          <span className="text-slate-600">
+            Page {currentPage} of {totalPages}
+          </span>
+  
+          <button
+            onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
+          >
+            Next →
+          </button>
+        </div>
+      )}
+      </div>
   )}
