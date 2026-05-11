@@ -74,7 +74,7 @@ export default function LabelScanner() {
         .from('scans')
         .select('*')
         .order('scanned_at', { ascending: false })
-        .limit(10000);
+        .limit(30000);
 
       if (data) setAllScans(data);
     };
@@ -212,7 +212,7 @@ export default function LabelScanner() {
       .from('scans')
       .select('*')
       .order('scanned_at', { ascending: false })
-      .limit(15000);
+      .limit(30000);
   
     if (data) {
       setAllScans(data);
@@ -226,7 +226,7 @@ export default function LabelScanner() {
   const paginatedScans = recentScans.slice(startIndex, endIndex);
 
   return (
-    <div className="max-w-5xl mx-auto p-8 bg-slate-50 min-h-screen">
+    <div className="flex flex-wrap max-w-5xl mx-auto p-8 bg-slate-50 min-h-screen">
       <h1 className="text-4xl font-bold mb-8 text-slate-900">Label Scanner</h1>
 
       <button
