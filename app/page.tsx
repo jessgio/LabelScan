@@ -131,6 +131,13 @@ export default function LabelScanner() {
   // ====================== STABLE REFRESH FUNCTION ======================
   const refreshData = async () => {
     console.log("Refresh button clicked");
+  
+    // Auto-reset date range to today
+    const todayStr = new Date().toISOString().split('T')[0];
+    setStartDate(todayStr);
+    setEndDate(todayStr);
+  
+    // Then fetch fresh data
     await fetchData();
   };
 
