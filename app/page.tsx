@@ -41,6 +41,9 @@ export default function LabelScanner() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
+  // ====================== ADD NEW LOADING STATUS =================
+  const [isLoading, setIsLoading] = useState(false);
+
   // ====================== DELETE SINGLE SCAN ======================
   // Delete a single scan
   const deleteSingleScan = async (id: string) => {
@@ -67,50 +70,46 @@ export default function LabelScanner() {
     }
   };
 
-  // ====================== LOAD ALL DATA ======================
-  useEffect(() => {
-    const loadAllScans = async () => {
-      const { data } = await supabase
-        .from('scans')
-        .select('*')
-        .order('scanned_at', { ascending: false })
-        .limit(30000);
-
-      if (data) setAllScans(data);
-    };
-    loadAllScans();
-  }, []);
-
-  // ====================== FILTER BY DATE RANGE ======================
-  // Filter by date range + pagination
-  useEffect(() => {
-  let filtered = [...allScans];
-
-  // If searching, search the entire database
+  // ====================== FETCH DATA FROM SUPABASE ======================
+  const fetchData = async () => {
+    setIsLoading(true);
+  
+    let query = supabase.from('scans').select('*');
+  
     if (searchTerm.trim() !== '') {
-      const term = searchTerm.toLowerCase();
-      filtered = allScans.filter((scan) =>
-        scan.label.toLowerCase().includes(term)
-      );
-      setIsSearching(true);
+      // Search across the entire database
+      query = query.ilike('label', `%${searchTerm}%`);
     } else {
-      // Normal date range filtering
-      filtered = filtered.filter((scan) => {
-        const scanDate = new Date(scan.scanned_at).toISOString().split('T')[0];
-        return scanDate >= startDate && scanDate <= endDate;
-      });
-      setIsSearching(false);
+      // Filter by selected date range
+      const start = `${startDate}T00:00:00`;
+      const end = `${endDate}T23:59:59.999`;
+      query = query.gte('scanned_at', start).lte('scanned_at', end);
     }
+  
+    const { data, error } = await query
+      .order('scanned_at', { ascending: false })
+      .limit(2000); // Safe and sufficient limit
+  
+    if (error) {
+      console.error('Error fetching data:', error);
+      alert('Failed to fetch data');
+    } else if (data) {
+      setRecentScans(data);
+      setCurrentPage(1);
+  
+      // Update stats
+      setTotalScans(data.length);
+      setTotalDuplicates(data.filter((s) => s.is_duplicate).length);
+      setTotalUnique(new Set(data.map((s) => s.label)).size);
+    }
+  
+    setIsLoading(false);
+  };
 
-    // Pagination reset when search or date changes
-    setRecentScans(filtered);
-    setCurrentPage(1);
-
-    // Update stats based on current view
-    setTotalScans(filtered.length);
-    setTotalDuplicates(filtered.filter((s) => s.is_duplicate).length);
-    setTotalUnique(new Set(filtered.map((s) => s.label)).size);
-  }, [searchTerm, startDate, endDate, allScans]);
+// Run fetchData when date range or search term changes
+useEffect(() => {
+  fetchData();
+}, [startDate, endDate, searchTerm]);
 
   // ====================== REALTIME UPDATES ======================
   useEffect(() => {
@@ -208,16 +207,8 @@ export default function LabelScanner() {
 
   // ==================== ADD REFRESH BUTTON ====================
   const refreshData = async () => {
-    const { data } = await supabase
-      .from('scans')
-      .select('*')
-      .order('scanned_at', { ascending: false })
-      .limit(30000);
-  
-    if (data) {
-      setAllScans(data);
-      console.log('Data refreshed');
-    }
+    await fetchData();
+    console.log('Data refreshed from Supabase');
   };
 
   const totalPages = Math.ceil(recentScans.length / ITEMS_PER_PAGE);
@@ -231,8 +222,11 @@ export default function LabelScanner() {
 
       <button
         onClick={refreshData}
-        className="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl"
+        disabled={isLoading}
+        className="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl disabled:opacity-50"
       >
+        {isLoading ? 'Refreshing...' : 'Refresh Data'}
+      </button>
         Refresh Data
       </button>
       
