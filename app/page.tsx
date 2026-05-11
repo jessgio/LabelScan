@@ -221,7 +221,6 @@ export default function LabelScanner() {
         className="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl disabled:opacity-50"
       >
         {isLoading ? 'Refreshing...' : 'Refresh Data'}
-        Refresh
       </button>
       
       {/* ====================== SEARCH + DATE RANGE ====================== */}
