@@ -196,36 +196,69 @@ export default function LabelScanner() {
   };
 
   // ====================== EXPORT TO CSV ======================
+  // ====================== EXPORT TO CSV (WITH CHUNKING) ======================
   const exportToCSV = async () => {
-    const { data } = await supabase
-      .from('scans')
-      .select('*')
-      .order('scanned_at', { ascending: false });
-
-    if (!data || data.length === 0) {
-      alert('No data to export');
+    console.log("→ Starting export...");
+  
+    let allData: Scan[] = [];
+    const CHUNK_SIZE = 1000;
+    let start = 0;
+    let hasMore = true;
+  
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('scans')
+        .select('*')
+        .order('scanned_at', { ascending: false })
+        .range(start, start + CHUNK_SIZE - 1);
+  
+      if (error) {
+        console.error("Export Error:", error);
+        alert("Failed to export data: " + error.message);
+        return;
+      }
+  
+      if (data && data.length > 0) {
+        allData = [...allData, ...data];
+        start += CHUNK_SIZE;
+      } else {
+        hasMore = false;
+      }
+  
+      if (data && data.length < CHUNK_SIZE) {
+        hasMore = false;
+      }
+    }
+  
+    console.log(`✓ Fetched ${allData.length} records for export`);
+  
+    if (allData.length === 0) {
+      alert("No data to export");
       return;
     }
-
+  
+    // Create CSV content
     const headers = ['Label', 'Scanned At', 'Is Duplicate'];
-    const rows = data.map((s) => [
+    const rows = allData.map((s) => [
       s.label,
       new Date(s.scanned_at).toLocaleString(),
       s.is_duplicate ? 'Yes' : 'No',
     ]);
-
+  
     const csvContent = [
       headers.join(','),
-      ...rows.map((r) => r.map((f) => `"${f}"`).join(',')),
+      ...rows.map((row) => row.map((field) => `"${field}"`).join(',')),
     ].join('\n');
-
+  
+    // Download the CSV
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `label_scans_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
+  
+    console.log("✓ CSV file downloaded");
   };
-
   // ====================== DELETE OLD SCANS ======================
   const deleteOldScans = async (days: number) => {
     let query = supabase.from('scans').delete();
