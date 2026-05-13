@@ -194,11 +194,10 @@ export default function LabelScanner() {
 
     setLabel('');
   };
-
-  // ====================== EXPORT TO CSV ======================
-  // ====================== EXPORT TO CSV (WITH CHUNKING) ======================
+  
+  // ====================== EXPORT TO CSV (RESPECTS DATE RANGE) ======================
   const exportToCSV = async () => {
-    console.log("→ Starting export...");
+    console.log("→ Starting filtered export...");
   
     let allData: Scan[] = [];
     const CHUNK_SIZE = 1000;
@@ -206,9 +205,20 @@ export default function LabelScanner() {
     let hasMore = true;
   
     while (hasMore) {
-      const { data, error } = await supabase
-        .from('scans')
-        .select('*')
+      let query = supabase.from('scans').select('*');
+  
+      // Apply same logic as fetchData
+      if (searchTerm.trim() !== '') {
+        // Export based on search term
+        query = query.ilike('label', `%${searchTerm}%`);
+      } else {
+        // Export based on selected date range
+        const startDateTime = `${startDate}T00:00:00`;
+        const endDateTime = `${endDate}T23:59:59.999`;
+        query = query.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
+      }
+  
+      const { data, error } = await query
         .order('scanned_at', { ascending: false })
         .range(start, start + CHUNK_SIZE - 1);
   
@@ -233,11 +243,11 @@ export default function LabelScanner() {
     console.log(`✓ Fetched ${allData.length} records for export`);
   
     if (allData.length === 0) {
-      alert("No data to export");
+      alert("No data to export in the selected range");
       return;
     }
   
-    // Create CSV content
+    // Build CSV
     const headers = ['Label', 'Scanned At', 'Is Duplicate'];
     const rows = allData.map((s) => [
       s.label,
@@ -250,11 +260,11 @@ export default function LabelScanner() {
       ...rows.map((row) => row.map((field) => `"${field}"`).join(',')),
     ].join('\n');
   
-    // Download the CSV
+    // Download file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `label_scans_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `label_scans_${startDate}_to_${endDate}.csv`;
     link.click();
   
     console.log("✓ CSV file downloaded");
