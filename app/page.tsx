@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import DuplicateModal from '@/components/DuplicateModal';
 
@@ -11,268 +11,212 @@ interface Scan {
   is_duplicate: boolean;
 }
 
+interface Stats {
+  total: number;
+  duplicates: number;
+  unique: number;
+}
+
+type Feedback = { type: 'success' | 'error'; message: string } | null;
+
+const PAGE_SIZE = 50;
+const SCAN_COLUMNS = 'id,label,scanned_at,is_duplicate';
+
+function todayStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
 export default function LabelScanner() {
+  const initialToday = todayStr();
+
   const [label, setLabel] = useState('');
-  
-  // ====================== DATE RANGE ======================
-  const today = new Date().toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(initialToday);
+  const [endDate, setEndDate] = useState(initialToday);
 
-  // ====================== STATS ======================
-  const [totalScans, setTotalScans] = useState(0);
-  const [totalDuplicates, setTotalDuplicates] = useState(0);
-  const [totalUnique, setTotalUnique] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  // ====================== DATA ======================
-  const [recentScans, setRecentScans] = useState<Scan[]>([]);
-  const [allScans, setAllScans] = useState<Scan[]>([]);
+  const [scans, setScans] = useState<Scan[]>([]);
+  const [stats, setStats] = useState<Stats>({ total: 0, duplicates: 0, unique: 0 });
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // ====================== DUPLICATE MODAL ======================
+  const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateLabel, setDuplicateLabel] = useState('');
 
-  // ====================== CURRENT PAGE/NEXT PAGE ===============
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 100;
+  const scannerRef = useRef<HTMLInputElement>(null);
 
-  // ======================= ADD SEARCH FIELD ====================
-  // Global Search
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
+  const isSearching = debouncedSearch.trim() !== '';
+  const totalPages = Math.max(1, Math.ceil(stats.total / PAGE_SIZE));
 
-  // ====================== ADD NEW LOADING STATUS =================
-  const [isLoading, setIsLoading] = useState(false);
+  const notify = useCallback((type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+  }, []);
 
-  // ====================== DELETE SINGLE SCAN ======================
-  // Delete a single scan
-  const deleteSingleScan = async (id: string) => {
-    if (!confirm("Delete this scan?")) return;
-
-    const { error } = await supabase.from('scans').delete().eq('id', id);
-
-    if (!error) {
-      // Remove from local state
-      setAllScans((prev) => prev.filter((s) => s.id !== id));
-      setRecentScans((prev) => prev.filter((s) => s.id !== id));
-
-      // Update counters
-      const remaining = allScans.filter((s) => s.id !== id);
-      const filtered = remaining.filter((scan) => {
-        const scanDate = new Date(scan.scanned_at).toISOString().split('T')[0];
-        return scanDate >= startDate && scanDate <= endDate;
-      });
-      setTotalScans(filtered.length);
-      setTotalDuplicates(filtered.filter((s) => s.is_duplicate).length);
-      setTotalUnique(new Set(filtered.map((s) => s.label)).size);
-    } else {
-      alert("Failed to delete scan");
-    }
-  };
-
-  // ====================== STABLE DATA FETCH FUNCTION ======================
-  const fetchData = async () => {
-    setIsLoading(true);
-    console.log("→ Fetching data from Supabase in chunks...");
-  
-    try {
-      let allData: Scan[] = [];
-      const CHUNK_SIZE = 1000;
-      let start = 0;
-      let hasMore = true;
-  
-      while (hasMore) {
-        let query = supabase.from('scans').select('*');
-  
-        if (searchTerm.trim() !== '') {
-          query = query.ilike('label', `%${searchTerm}%`);
-        } else {
-          const startDateTime = `${startDate}T00:00:00`;
-          const endDateTime = `${endDate}T23:59:59.999`;
-          query = query.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
-        }
-  
-        const { data, error } = await query
-          .order('scanned_at', { ascending: false })
-          .range(start, start + CHUNK_SIZE - 1);
-  
-        if (error) {
-          console.error("Supabase Error:", error);
-          alert("Failed to fetch data: " + error.message);
-          break;
-        }
-  
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-          start += CHUNK_SIZE;
-        } else {
-          hasMore = false;
-        }
-  
-        // Safety break in case of very large data
-        if (data && data.length < CHUNK_SIZE) {
-          hasMore = false;
-        }
-      }
-  
-      console.log("✓ Data received:", allData.length, "records");
-      setRecentScans([...allData]);
-      setTotalScans(allData.length);
-      setTotalDuplicates(allData.filter((s) => s.is_duplicate).length);
-      setTotalUnique(new Set(allData.map((s) => s.label)).size);
-  
-    } catch (err) {
-      console.error("Unexpected error:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  // ====================== STABLE REFRESH FUNCTION ======================
-  const refreshData = async () => {
-    console.log("Refresh button clicked");
-  
-    // Reset date range to today
-    const todayStr = new Date().toISOString().split('T')[0];
-    setStartDate(todayStr);
-    setEndDate(todayStr);
-  };
-
-  // ====================== REALTIME UPDATES ======================
+  // Auto-dismiss feedback toast.
   useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 2500);
+    return () => clearTimeout(t);
+  }, [feedback]);
+
+  // Debounce the search box so we don't hit the DB on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // ====================== DATA LOADING ======================
+  // One round trip for the visible page + one for aggregate stats.
+  const loadData = useCallback(
+    async (page: number) => {
+      setIsLoading(true);
+      try {
+        const search = debouncedSearch.trim();
+        const startDateTime = `${startDate}T00:00:00`;
+        const endDateTime = `${endDate}T23:59:59.999`;
+
+        const buildRowQuery = () => {
+          let q = supabase.from('scans').select(SCAN_COLUMNS);
+          if (search !== '') {
+            q = q.ilike('label', `%${search}%`);
+          } else {
+            q = q.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
+          }
+          return q
+            .order('scanned_at', { ascending: false })
+            .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+        };
+
+        const [rowsRes, statsRes] = await Promise.all([
+          buildRowQuery(),
+          supabase.rpc('get_scan_stats', {
+            p_start: startDateTime,
+            p_end: endDateTime,
+            p_search: search === '' ? null : search,
+          }),
+        ]);
+
+        if (rowsRes.error) throw rowsRes.error;
+        if (statsRes.error) throw statsRes.error;
+
+        const rows = (rowsRes.data ?? []) as Scan[];
+        const stat = (Array.isArray(statsRes.data) ? statsRes.data[0] : statsRes.data) as
+          | { total: number; duplicates: number; unique_labels: number }
+          | undefined;
+
+        // If we deleted the last item on a page, fall back to page 1.
+        if (rows.length === 0 && page > 1 && (stat?.total ?? 0) > 0) {
+          setCurrentPage(1);
+          return;
+        }
+
+        setScans(rows);
+        setStats({
+          total: Number(stat?.total ?? 0),
+          duplicates: Number(stat?.duplicates ?? 0),
+          unique: Number(stat?.unique_labels ?? 0),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load scans';
+        notify('error', message);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [debouncedSearch, startDate, endDate, notify],
+  );
+
+  // Keep a stable reference for realtime callbacks without re-subscribing.
+  const loadRef = useRef(loadData);
+  const pageRef = useRef(currentPage);
+  useEffect(() => {
+    loadRef.current = loadData;
+    pageRef.current = currentPage;
+  }, [loadData, currentPage]);
+
+  // Load whenever filters or the page change (deferred to satisfy the
+  // "no setState directly in effect" rule and to debounce naturally).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      loadData(currentPage);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [loadData, currentPage]);
+
+  // ====================== REALTIME ======================
+  // Subscribe once; coalesce bursts (e.g. bulk delete) into a single reload.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel('live-scans')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'scans' },
-        () => {
-          // Refresh data when a new scan is inserted
-          fetchData();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scans' }, () => {
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(() => loadRef.current(pageRef.current), 300);
+      })
       .subscribe();
 
     return () => {
+      if (debounce) clearTimeout(debounce);
       supabase.removeChannel(channel);
     };
-  }, [startDate, endDate, searchTerm]);
+  }, []);
 
-  // ====================== AUTO FETCH DATA ======================
-  useEffect(() => {
-    fetchData();
-  }, [startDate, endDate, searchTerm]);
-  
-  // ====================== RESET TO TODAY ======================
-  const resetToToday = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    setStartDate(todayStr);
-    setEndDate(todayStr);
-  };
-
-  // ====================== HANDLE SCAN ======================
-  const handleScan = async (scannedLabel: string) => {
-    const trimmed = scannedLabel.trim();
+  // ====================== ACTIONS ======================
+  const handleScan = async () => {
+    const trimmed = label.trim();
     if (!trimmed) return;
-
-    const { data: existing } = await supabase
-      .from('scans')
-      .select('id')
-      .eq('label', trimmed)
-      .limit(1);
-
-    const isDuplicate = !!(existing && existing.length > 0);
-
-    await supabase.from('scans').insert({
-      label: trimmed,
-      is_duplicate: isDuplicate,
-    });
-
-    if (isDuplicate) {
-      setDuplicateLabel(trimmed);
-      setShowDuplicate(true);
-    }
-
     setLabel('');
-  };
-  
-  // ====================== EXPORT TO CSV (RESPECTS DATE RANGE) ======================
-  const exportToCSV = async () => {
-    console.log("→ Starting filtered export...");
-  
-    let allData: Scan[] = [];
-    const CHUNK_SIZE = 1000;
-    let start = 0;
-    let hasMore = true;
-  
-    while (hasMore) {
-      let query = supabase.from('scans').select('*');
-  
-      // Apply same logic as fetchData
-      if (searchTerm.trim() !== '') {
-        // Export based on search term
-        query = query.ilike('label', `%${searchTerm}%`);
+
+    try {
+      const { data: existing, error: lookupError } = await supabase
+        .from('scans')
+        .select('id')
+        .eq('label', trimmed)
+        .limit(1);
+      if (lookupError) throw lookupError;
+
+      const isDuplicate = !!(existing && existing.length > 0);
+
+      const { error: insertError } = await supabase
+        .from('scans')
+        .insert({ label: trimmed, is_duplicate: isDuplicate });
+      if (insertError) throw insertError;
+
+      if (isDuplicate) {
+        setDuplicateLabel(trimmed);
+        setShowDuplicate(true);
       } else {
-        // Export based on selected date range
-        const startDateTime = `${startDate}T00:00:00`;
-        const endDateTime = `${endDate}T23:59:59.999`;
-        query = query.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
+        notify('success', `Saved "${trimmed}"`);
       }
-  
-      const { data, error } = await query
-        .order('scanned_at', { ascending: false })
-        .range(start, start + CHUNK_SIZE - 1);
-  
-      if (error) {
-        console.error("Export Error:", error);
-        alert("Failed to export data: " + error.message);
-        return;
-      }
-  
-      if (data && data.length > 0) {
-        allData = [...allData, ...data];
-        start += CHUNK_SIZE;
-      } else {
-        hasMore = false;
-      }
-  
-      if (data && data.length < CHUNK_SIZE) {
-        hasMore = false;
-      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save scan';
+      notify('error', message);
     }
-  
-    console.log(`✓ Fetched ${allData.length} records for export`);
-  
-    if (allData.length === 0) {
-      alert("No data to export in the selected range");
+  };
+
+  const deleteSingleScan = async (id: string) => {
+    if (!confirm('Delete this scan?')) return;
+    const { error } = await supabase.from('scans').delete().eq('id', id);
+    if (error) {
+      notify('error', 'Failed to delete scan');
       return;
     }
-  
-    // Build CSV
-    const headers = ['Label', 'Scanned At', 'Is Duplicate'];
-    const rows = allData.map((s) => [
-      s.label,
-      new Date(s.scanned_at).toLocaleString(),
-      s.is_duplicate ? 'Yes' : 'No',
-    ]);
-  
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.map((field) => `"${field}"`).join(',')),
-    ].join('\n');
-  
-    // Download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `label_scans_${startDate}_to_${endDate}.csv`;
-    link.click();
-  
-    console.log("✓ CSV file downloaded");
+    // Optimistic removal; realtime + reload will reconcile counts.
+    setScans((prev) => prev.filter((s) => s.id !== id));
+    notify('success', 'Scan deleted');
   };
-  // ====================== DELETE OLD SCANS ======================
-  const deleteOldScans = async (days: number) => {
-    let query = supabase.from('scans').delete();
 
+  const deleteOldScans = async (days: number) => {
+    const msg =
+      days === 0
+        ? 'Delete ALL scans permanently?'
+        : `Delete scans older than ${days} days?`;
+    if (!confirm(msg)) return;
+
+    let query = supabase.from('scans').delete();
     if (days > 0) {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
@@ -280,225 +224,360 @@ export default function LabelScanner() {
     } else {
       query = query.neq('id', '00000000-0000-0000-0000-000000000000');
     }
+
     const { error } = await query;
-    return { error };
+    if (error) {
+      notify('error', 'Failed to delete scans');
+      return;
+    }
+    notify('success', 'Scans deleted');
+    setCurrentPage(1);
+    loadData(1);
   };
 
- 
-  const totalPages = Math.ceil(recentScans.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedScans = recentScans.slice(startIndex, endIndex);
+  const refreshData = () => {
+    const t = todayStr();
+    setSearchTerm('');
+    setStartDate(t);
+    setEndDate(t);
+    setCurrentPage(1);
+    loadData(1);
+  };
 
+  const resetToToday = () => {
+    const t = todayStr();
+    setStartDate(t);
+    setEndDate(t);
+    setCurrentPage(1);
+  };
+
+  const exportToCSV = async () => {
+    try {
+      const search = debouncedSearch.trim();
+      const startDateTime = `${startDate}T00:00:00`;
+      const endDateTime = `${endDate}T23:59:59.999`;
+
+      const all: Scan[] = [];
+      const CHUNK = 1000;
+      let start = 0;
+
+      for (;;) {
+        let query = supabase.from('scans').select(SCAN_COLUMNS);
+        if (search !== '') {
+          query = query.ilike('label', `%${search}%`);
+        } else {
+          query = query.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
+        }
+        const { data, error } = await query
+          .order('scanned_at', { ascending: false })
+          .range(start, start + CHUNK - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...(data as Scan[]));
+        if (data.length < CHUNK) break;
+        start += CHUNK;
+      }
+
+      if (all.length === 0) {
+        notify('error', 'No data to export for this filter');
+        return;
+      }
+
+      const headers = ['Label', 'Scanned At', 'Is Duplicate'];
+      const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+      const rows = all.map((s) =>
+        [s.label, new Date(s.scanned_at).toLocaleString(), s.is_duplicate ? 'Yes' : 'No']
+          .map(escape)
+          .join(','),
+      );
+      const csv = [headers.map(escape).join(','), ...rows].join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = isSearching
+        ? `label_scans_search.csv`
+        : `label_scans_${startDate}_to_${endDate}.csv`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      notify('success', `Exported ${all.length} scans`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to export';
+      notify('error', message);
+    }
+  };
+
+  const closeDuplicate = () => {
+    setShowDuplicate(false);
+    scannerRef.current?.focus();
+  };
+
+  // ====================== RENDER ======================
   return (
-    <div className="max-w-5xl mx-auto p-8 bg-slate-50 min-h-screen">
-      <h1 className="text-4xl font-bold mb-8 text-slate-900">Label Scanner</h1>
+    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900">
+      {/* Toast */}
+      {feedback && (
+        <div
+          role="status"
+          className={`fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-full px-5 py-2.5 text-sm font-medium shadow-lg ring-1 ring-black/5 ${
+            feedback.type === 'success'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-rose-600 text-white'
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
 
-      <button
-        onClick={refreshData}
-        disabled={isLoading}
-        className="bg-slate-600 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl disabled:opacity-50"
-      >
-        {isLoading ? 'Refreshing...' : 'Refresh Data'}
-      </button>
-      
-      {/* ====================== SEARCH + DATE RANGE ====================== */}
-      <div className="mb-8">
-        {/* Global Search */}
-        <div className="mb-4">
-          <label className="block text-sm font-semibold text-black mb-1">Search Entire Database</label>
-          <input
-            type="text"
-            placeholder="Type to search all scans..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full border border-slate-300 px-4 py-3 rounded-2xl text-lg focus:outline-none focus:border-slate-900 text-slate-900"
-          />
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Label Scanner</h1>
+            <p className="mt-0.5 text-sm text-slate-500">Warehouse shipping throughput</p>
+          </div>
+          <button
+            onClick={refreshData}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${
+                isLoading ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'
+              }`}
+            />
+            {isLoading ? 'Loading…' : 'Refresh'}
+          </button>
         </div>
 
-        {/* Date Range (only show when not searching) */}
-        {!isSearching && (
-          <div className="flex flex-wrap items-end gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-black mb-1">From</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-900"
-              />
+        {/* Scanner — primary action, sticky at the top */}
+        <div className="sticky top-3 z-30 mb-6">
+          <div className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-lg ring-1 ring-black/5 backdrop-blur">
+            <input
+              ref={scannerRef}
+              type="text"
+              autoFocus
+              inputMode="text"
+              autoComplete="off"
+              className="w-full rounded-xl border-2 border-indigo-200 bg-white px-4 py-4 text-lg font-medium text-slate-900 outline-none transition focus:border-indigo-500 sm:text-xl"
+              placeholder="Scan or type a label, then press Enter"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleScan();
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="mb-6 grid grid-cols-3 gap-3 sm:gap-4">
+          <StatCard label="Total" value={stats.total} accent="text-slate-900" />
+          <StatCard label="Duplicates" value={stats.duplicates} accent="text-rose-600" />
+          <StatCard label="Unique" value={stats.unique} accent="text-indigo-600" />
+        </div>
+
+        {/* Filters */}
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            Search entire database
+          </label>
+          <input
+            type="text"
+            placeholder="Type to search all scans…"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-indigo-500"
+          />
+
+          {!isSearching && (
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="flex-1 min-w-[140px]">
+                <label className="mb-1 block text-xs font-semibold text-slate-500">From</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="flex-1 min-w-[140px]">
+                <label className="mb-1 block text-xs font-semibold text-slate-500">To</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={resetToToday}
+                  className="rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-900"
+                >
+                  Today
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+                >
+                  Export CSV
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-black mb-1">To</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="border border-slate-300 px-4 py-2 rounded-xl text-lg text-slate-900"
-              />
+          )}
+          {isSearching && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={exportToCSV}
+                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+              >
+                Export CSV
+              </button>
             </div>
+          )}
+        </div>
+
+        {/* Table */}
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">
+            {isSearching ? `Results for “${debouncedSearch}”` : `Scans · ${startDate} → ${endDate}`}
+          </h2>
+          <span className="text-sm text-slate-500">{stats.total.toLocaleString()} total</span>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left">
+              <thead className="bg-slate-800 text-white">
+                <tr>
+                  <th className="p-3 text-sm font-semibold sm:p-4">Label</th>
+                  <th className="p-3 text-sm font-semibold sm:p-4">Time</th>
+                  <th className="p-3 text-sm font-semibold sm:p-4">Status</th>
+                  <th className="w-16 p-3 text-sm font-semibold sm:p-4">·</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {scans.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-10 text-center text-slate-400">
+                      {isLoading ? 'Loading…' : 'No scans found'}
+                    </td>
+                  </tr>
+                ) : (
+                  scans.map((scan) => (
+                    <tr key={scan.id} className="transition hover:bg-slate-50">
+                      <td className="p-3 font-mono text-sm text-slate-900 sm:p-4 sm:text-base">
+                        {scan.label}
+                      </td>
+                      <td className="whitespace-nowrap p-3 text-sm text-slate-500 sm:p-4">
+                        {new Date(scan.scanned_at).toLocaleString()}
+                      </td>
+                      <td className="p-3 sm:p-4">
+                        {scan.is_duplicate ? (
+                          <span className="inline-block rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">
+                            DUPLICATE
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            NEW
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 sm:p-4">
+                        <button
+                          onClick={() => deleteSingleScan(scan.id)}
+                          aria-label="Delete scan"
+                          className="text-sm font-medium text-rose-600 transition hover:text-rose-800"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
             <button
-              onClick={resetToToday}
-              className="bg-slate-800 hover:bg-black text-white px-5 py-2.5 rounded-xl h-[50px]"
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage <= 1 || isLoading}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
             >
-              Reset to Today
+              ← Prev
             </button>
+            <span className="text-sm text-slate-500">
+              Page {currentPage} of {totalPages}
+            </span>
             <button
-              onClick={exportToCSV}
-              className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl h-[50px]"
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              disabled={currentPage >= totalPages || isLoading}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
             >
-              Export to CSV
+              Next →
             </button>
           </div>
         )}
-      </div>
 
-      {/* ====================== STATS ====================== */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-m4 text-slate-500">Total Scans</p>
-          <p className="text-6xl font-bold text-slate-900 mt-2">{totalScans}</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-m4 text-slate-500">Total Duplicates</p>
-          <p className="text-6xl font-bold text-red-600 mt-2">{totalDuplicates}</p>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <p className="text-m4 text-slate-500">Total Unique Scans</p>
-          <p className="text-6xl font-bold text-blue-600 mt-2">{totalUnique}</p>
-        </div>
-      </div>
-
-      {/* ====================== DELETE OLD SCANS ====================== */}
-      <div className="mb-8 border border-slate-200 rounded-2xl p-6 bg-white shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Delete Old Scans</h3>
-        <div className="flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex-1">
-            <label className="block text-sm text-slate-500 mb-1.5">Delete scans older than:</label>
-            <select id="delete-days" className="w-full border border-slate-950 rounded-xl px-4 py-3 text-slate bg-white">
-              <option value="7" className="text-slate-500">7 days</option>
-              <option value="30" className="text-slate-500">30 days</option>
-              <option value="90" className="text-slate-500">90 days</option>
-              <option value="0" className="text-slate-500">All scans</option>
-            </select>
+        {/* Danger zone — de-emphasised + collapsed */}
+        <details className="mt-8 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <summary className="cursor-pointer select-none p-4 text-sm font-semibold text-slate-600">
+            Maintenance · delete old scans
+          </summary>
+          <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <label className="mb-1.5 block text-xs text-slate-500">Delete scans older than</label>
+              <select
+                id="delete-days"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+              >
+                <option value="7">7 days</option>
+                <option value="30">30 days</option>
+                <option value="90">90 days</option>
+                <option value="0">All scans</option>
+              </select>
+            </div>
+            <button
+              onClick={() => {
+                const select = document.getElementById('delete-days') as HTMLSelectElement;
+                deleteOldScans(parseInt(select.value, 10));
+              }}
+              className="rounded-xl bg-rose-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-700"
+            >
+              Delete
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              const select = document.getElementById('delete-days') as HTMLSelectElement;
-              const days = parseInt(select.value);
-              const msg = days === 0 
-                ? "Delete ALL scans permanently?" 
-                : `Delete scans older than ${days} days?`;
-
-              if (!confirm(msg)) return;
-
-              const { error } = await deleteOldScans(days);
-              if (error) {
-                alert('Failed to delete scans');
-              } else {
-                alert('Scans deleted successfully');
-                window.location.reload();
-              }
-            }}
-            className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-semibold"
-          >
-            Delete Selected Scans
-          </button>
-        </div>
+        </details>
       </div>
 
-      {/* ====================== SCANNER INPUT ====================== */}
-      <input
-        type="text"
-        autoFocus
-        className="w-full bg-white p-5 text-2xl border border-slate-300 rounded-2xl mb-8 focus:outline-none focus:border-slate-900 text-slate-950"
-        placeholder="Scan or type label and press Enter"
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && handleScan(label)}
-      />
+      {showDuplicate && <DuplicateModal label={duplicateLabel} onClose={closeDuplicate} />}
+    </main>
+  );
+}
 
-     
-     {/* ====================== RECENT SCANS TABLE ====================== */}
-      <h2 className="text-2xl font-semibold mb-4 text-slate-900">
-        {isSearching 
-        ? `Search Results for "${searchTerm}"` 
-        : `Scans from ${startDate} to ${endDate}`}
-      </h2>
-  
-      <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-        <table className="w-full text-left">
-          <thead className="bg-slate-800 text-white">
-            <tr>
-              <th className="p-4 font-semibold">Label</th>
-              <th className="p-4 font-semibold">Time Scanned</th>
-              <th className="p-4 font-semibold">Status</th>
-              <th className="p-4 font-semibold w-24">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedScans.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="p-8 text-center text-slate-500">
-                  No scans in this date range
-                </td>
-              </tr>
-            ) : (
-              paginatedScans.map((scan, index) => (
-                <tr key={scan.id} className={index % 2 === 0 ? "bg-white" : "bg-slate-100"}>
-                  <td className="p-4 font-mono text-lg text-slate-900">{scan.label}</td>
-                  <td className="p-4 text-slate-600">
-                    {new Date(scan.scanned_at).toLocaleString()}
-                  </td>
-                  <td className="p-4">
-                    {scan.is_duplicate ? (
-                      <span className="inline-block px-4 py-1 rounded-full bg-red-600 text-white text-sm font-semibold">
-                        DUPLICATE
-                      </span>
-                    ) : (
-                      <span className="inline-block px-4 py-1 rounded-full bg-green-600 text-white text-sm font-semibold">
-                        NEW
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    <button
-                      onClick={() => deleteSingleScan(scan.id)}
-                      className="text-red-600 hover:text-red-800 font-medium text-sm"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-  
-      {/* Pagination Controls */}
-      {paginatedScans.length > 0 && totalPages > 1 && (
-        <div className="flex justify-between items-center mt-4">
-          <button
-            onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
-            disabled={currentPage === 1}
-            className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
-          >
-            ← Previous
-          </button>
-  
-          <span className="text-slate-600">
-            Page {currentPage} of {totalPages}
-          </span>
-  
-          <button
-            onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            className="px-4 py-2 bg-white border border-slate-300 rounded-xl disabled:opacity-50 hover:bg-slate-100 text-slate-950"
-          >
-            Next →
-          </button>
-        </div>
-      )}
-      </div>
-  )}
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-400 sm:text-sm">
+        {label}
+      </p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums sm:text-4xl ${accent}`}>
+        {value.toLocaleString()}
+      </p>
+    </div>
+  );
+}
