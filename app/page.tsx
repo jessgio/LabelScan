@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import DuplicateModal from '@/components/DuplicateModal';
 
@@ -27,6 +28,7 @@ function todayStr() {
 }
 
 export default function LabelScanner() {
+  const router = useRouter();
   const initialToday = todayStr();
 
   const [label, setLabel] = useState('');
@@ -312,6 +314,12 @@ export default function LabelScanner() {
     scannerRef.current?.focus();
   };
 
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    router.replace('/login');
+    router.refresh();
+  };
+
   // ====================== RENDER ======================
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900">
@@ -336,18 +344,26 @@ export default function LabelScanner() {
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Label Scanner</h1>
             <p className="mt-0.5 text-sm text-slate-500">Warehouse shipping throughput</p>
           </div>
-          <button
-            onClick={refreshData}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
-          >
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${
-                isLoading ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'
-              }`}
-            />
-            {isLoading ? 'Loading…' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={refreshData}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  isLoading ? 'animate-pulse bg-amber-500' : 'bg-emerald-500'
+                }`}
+              />
+              {isLoading ? 'Loading…' : 'Refresh'}
+            </button>
+            <button
+              onClick={signOut}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-800"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
 
         {/* Scanner — primary action, sticky at the top */}

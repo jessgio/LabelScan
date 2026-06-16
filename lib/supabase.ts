@@ -1,7 +1,5 @@
-// lib/supabase.ts
-import { createClient } from '@supabase/supabase-js'
+// Browser singleton used by Client Components. Backed by @supabase/ssr so the
+// session lives in cookies and is shared with server-side rendering / the proxy.
+import { createClient } from '@/lib/supabase/client';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient();
