@@ -173,19 +173,13 @@ export default function LabelScanner() {
     setLabel('');
 
     try {
-      const { data: existing, error: lookupError } = await supabase
-        .from('scans')
-        .select('id')
-        .eq('label', trimmed)
-        .limit(1);
-      if (lookupError) throw lookupError;
-
-      const isDuplicate = !!(existing && existing.length > 0);
-
-      const { error: insertError } = await supabase
-        .from('scans')
-        .insert({ label: trimmed, is_duplicate: isDuplicate });
+      const { data, error: insertError } = await supabase.rpc('insert_scan', {
+        p_label: trimmed,
+      });
       if (insertError) throw insertError;
+
+      const row = (Array.isArray(data) ? data[0] : data) as Scan | undefined;
+      const isDuplicate = row?.is_duplicate ?? false;
 
       if (isDuplicate) {
         setDuplicateLabel(trimmed);
