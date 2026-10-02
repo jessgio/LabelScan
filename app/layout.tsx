@@ -3,8 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { brandDescription, brandName } from "@/lib/brand";
 import "./globals.css";
 
-const brandColor = process.env.NEXT_PUBLIC_BRAND_COLOR ?? "#4f46e5";
-const brandColorDark = process.env.NEXT_PUBLIC_BRAND_COLOR_DARK ?? "#4338ca";
+const brandColor = process.env.NEXT_PUBLIC_BRAND_COLOR || "#4f46e5";
+const brandColorDark = process.env.NEXT_PUBLIC_BRAND_COLOR_DARK || "#4338ca";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
