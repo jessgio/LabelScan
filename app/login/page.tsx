@@ -3,8 +3,9 @@
 import { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { allowedEmailDomain, brandMark, brandName } from '@/lib/brand';
 
-const ALLOWED_DOMAIN = 'aerisbeaute.com';
+const ALLOWED_DOMAIN = allowedEmailDomain;
 
 function LoginForm() {
   const router = useRouter();
@@ -62,10 +63,10 @@ function LoginForm() {
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100 px-4">
       <div className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-8 shadow-xl ring-1 ring-black/5">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-xl font-bold text-white">
-            LS
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand text-xl font-bold text-white">
+            {brandMark}
           </div>
-          <h1 className="text-xl font-bold text-slate-900">Label Scanner</h1>
+          <h1 className="text-xl font-bold text-slate-900">{brandName}</h1>
           <p className="mt-1 text-sm text-slate-500">
             {mode === 'signin' ? 'Sign in to continue' : 'Create your account'}
           </p>
@@ -82,7 +83,7 @@ function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={`you@${ALLOWED_DOMAIN}`}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-indigo-500"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-brand"
             />
           </div>
           <div>
@@ -95,7 +96,7 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-indigo-500"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-brand"
             />
           </div>
 
@@ -109,7 +110,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-base font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            className="w-full rounded-xl bg-brand px-4 py-3 text-base font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
           >
             {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
           </button>
