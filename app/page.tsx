@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import DuplicateModal from '@/components/DuplicateModal';
+import { brandName, brandTagline } from '@/lib/brand';
+import { formatInAppTimezone, rangeIso, todayInAppTimezone } from '@/lib/dates';
+import { escapeIlike } from '@/lib/search';
 
 interface Scan {
   id: string;
@@ -24,7 +27,7 @@ const PAGE_SIZE = 50;
 const SCAN_COLUMNS = 'id,label,scanned_at,is_duplicate';
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0];
+  return todayInAppTimezone();
 }
 
 export default function LabelScanner() {
@@ -42,13 +45,16 @@ export default function LabelScanner() {
   const [stats, setStats] = useState<Stats>({ total: 0, duplicates: 0, unique: 0 });
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
 
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateLabel, setDuplicateLabel] = useState('');
 
   const scannerRef = useRef<HTMLInputElement>(null);
+  const deleteDaysRef = useRef<HTMLSelectElement>(null);
+  const requestId = useRef(0);
 
   const isSearching = debouncedSearch.trim() !== '';
   const totalPages = Math.max(1, Math.ceil(stats.total / PAGE_SIZE));
@@ -74,16 +80,17 @@ export default function LabelScanner() {
   // One round trip for the visible page + one for aggregate stats.
   const loadData = useCallback(
     async (page: number) => {
+      const id = ++requestId.current;
       setIsLoading(true);
       try {
         const search = debouncedSearch.trim();
-        const startDateTime = `${startDate}T00:00:00`;
-        const endDateTime = `${endDate}T23:59:59.999`;
+        const escaped = search === '' ? null : escapeIlike(search);
+        const { start: startDateTime, end: endDateTime } = rangeIso(startDate, endDate);
 
         const buildRowQuery = () => {
           let q = supabase.from('scans').select(SCAN_COLUMNS);
-          if (search !== '') {
-            q = q.ilike('label', `%${search}%`);
+          if (escaped !== null) {
+            q = q.ilike('label', `%${escaped}%`);
           } else {
             q = q.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
           }
@@ -97,10 +104,11 @@ export default function LabelScanner() {
           supabase.rpc('get_scan_stats', {
             p_start: startDateTime,
             p_end: endDateTime,
-            p_search: search === '' ? null : search,
+            p_search: escaped,
           }),
         ]);
 
+        if (id !== requestId.current) return;
         if (rowsRes.error) throw rowsRes.error;
         if (statsRes.error) throw statsRes.error;
 
@@ -122,10 +130,11 @@ export default function LabelScanner() {
           unique: Number(stat?.unique_labels ?? 0),
         });
       } catch (err) {
+        if (id !== requestId.current) return;
         const message = err instanceof Error ? err.message : 'Failed to load scans';
         notify('error', message);
       } finally {
-        setIsLoading(false);
+        if (id === requestId.current) setIsLoading(false);
       }
     },
     [debouncedSearch, startDate, endDate, notify],
@@ -169,7 +178,7 @@ export default function LabelScanner() {
   // ====================== ACTIONS ======================
   const handleScan = async () => {
     const trimmed = label.trim();
-    if (!trimmed) return;
+    if (!trimmed || showDuplicate) return;
     setLabel('');
 
     try {
@@ -187,7 +196,10 @@ export default function LabelScanner() {
       } else {
         notify('success', `Saved "${trimmed}"`);
       }
+      // Reload even if realtime is disconnected, so a saved scan is visible.
+      loadData(currentPage);
     } catch (err) {
+      setLabel((current) => (current.trim() === '' ? trimmed : current));
       const message = err instanceof Error ? err.message : 'Failed to save scan';
       notify('error', message);
     }
@@ -218,7 +230,7 @@ export default function LabelScanner() {
       cutoff.setDate(cutoff.getDate() - days);
       query = query.lt('scanned_at', cutoff.toISOString());
     } else {
-      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+      query = query.not('id', 'is', null);
     }
 
     const { error } = await query;
@@ -248,10 +260,12 @@ export default function LabelScanner() {
   };
 
   const exportToCSV = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
     try {
       const search = debouncedSearch.trim();
-      const startDateTime = `${startDate}T00:00:00`;
-      const endDateTime = `${endDate}T23:59:59.999`;
+      const escaped = search === '' ? null : escapeIlike(search);
+      const { start: startDateTime, end: endDateTime } = rangeIso(startDate, endDate);
 
       const all: Scan[] = [];
       const CHUNK = 1000;
@@ -259,8 +273,8 @@ export default function LabelScanner() {
 
       for (;;) {
         let query = supabase.from('scans').select(SCAN_COLUMNS);
-        if (search !== '') {
-          query = query.ilike('label', `%${search}%`);
+        if (escaped !== null) {
+          query = query.ilike('label', `%${escaped}%`);
         } else {
           query = query.gte('scanned_at', startDateTime).lte('scanned_at', endDateTime);
         }
@@ -282,7 +296,7 @@ export default function LabelScanner() {
       const headers = ['Label', 'Scanned At', 'Is Duplicate'];
       const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
       const rows = all.map((s) =>
-        [s.label, new Date(s.scanned_at).toLocaleString(), s.is_duplicate ? 'Yes' : 'No']
+        [s.label, formatInAppTimezone(s.scanned_at), s.is_duplicate ? 'Yes' : 'No']
           .map(escape)
           .join(','),
       );
@@ -300,6 +314,8 @@ export default function LabelScanner() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to export';
       notify('error', message);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -335,8 +351,8 @@ export default function LabelScanner() {
         {/* Header */}
         <div className="mb-6 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Label Scanner</h1>
-            <p className="mt-0.5 text-sm text-slate-500">Warehouse shipping throughput</p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{brandName}</h1>
+            <p className="mt-0.5 text-sm text-slate-500">{brandTagline}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -369,12 +385,15 @@ export default function LabelScanner() {
               autoFocus
               inputMode="text"
               autoComplete="off"
-              className="w-full rounded-xl border-2 border-indigo-200 bg-white px-4 py-4 text-lg font-medium text-slate-900 outline-none transition focus:border-indigo-500 sm:text-xl"
+              className="w-full rounded-xl border-2 border-brand/30 bg-white px-4 py-4 text-lg font-medium text-slate-900 outline-none transition focus:border-brand sm:text-xl"
               placeholder="Scan or type a label, then press Enter"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleScan();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleScan();
+                }
               }}
             />
           </div>
@@ -384,7 +403,7 @@ export default function LabelScanner() {
         <div className="mb-6 grid grid-cols-3 gap-3 sm:gap-4">
           <StatCard label="Total" value={stats.total} accent="text-slate-900" />
           <StatCard label="Duplicates" value={stats.duplicates} accent="text-rose-600" />
-          <StatCard label="Unique" value={stats.unique} accent="text-indigo-600" />
+          <StatCard label="Unique" value={stats.unique} accent="text-brand" />
         </div>
 
         {/* Filters */}
@@ -400,7 +419,7 @@ export default function LabelScanner() {
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-indigo-500"
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-brand"
           />
 
           {!isSearching && (
@@ -414,7 +433,7 @@ export default function LabelScanner() {
                     setStartDate(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-indigo-500"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand"
                 />
               </div>
               <div className="flex-1 min-w-[140px]">
@@ -426,7 +445,7 @@ export default function LabelScanner() {
                     setEndDate(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-indigo-500"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand"
                 />
               </div>
               <div className="flex gap-3">
@@ -438,9 +457,10 @@ export default function LabelScanner() {
                 </button>
                 <button
                   onClick={exportToCSV}
-                  className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+                  disabled={isExporting}
+                  className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
                 >
-                  Export CSV
+                  {isExporting ? 'Exporting…' : 'Export CSV'}
                 </button>
               </div>
             </div>
@@ -449,9 +469,10 @@ export default function LabelScanner() {
             <div className="mt-4 flex justify-end">
               <button
                 onClick={exportToCSV}
-                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+                disabled={isExporting}
+                className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
               >
-                Export CSV
+                {isExporting ? 'Exporting…' : 'Export CSV'}
               </button>
             </div>
           )}
@@ -490,7 +511,7 @@ export default function LabelScanner() {
                         {scan.label}
                       </td>
                       <td className="whitespace-nowrap p-3 text-sm text-slate-500 sm:p-4">
-                        {new Date(scan.scanned_at).toLocaleString()}
+                        {formatInAppTimezone(scan.scanned_at)}
                       </td>
                       <td className="p-3 sm:p-4">
                         {scan.is_duplicate ? (
@@ -552,7 +573,7 @@ export default function LabelScanner() {
             <div className="flex-1">
               <label className="mb-1.5 block text-xs text-slate-500">Delete scans older than</label>
               <select
-                id="delete-days"
+                ref={deleteDaysRef}
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
               >
                 <option value="7">7 days</option>
@@ -563,8 +584,7 @@ export default function LabelScanner() {
             </div>
             <button
               onClick={() => {
-                const select = document.getElementById('delete-days') as HTMLSelectElement;
-                deleteOldScans(parseInt(select.value, 10));
+                deleteOldScans(parseInt(deleteDaysRef.current?.value ?? '7', 10));
               }}
               className="rounded-xl bg-rose-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-700"
             >
