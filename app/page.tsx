@@ -390,7 +390,7 @@ export default function LabelScanner() {
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 xl:max-w-none xl:px-8">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between gap-3">
           <div>
@@ -419,8 +419,10 @@ export default function LabelScanner() {
           </div>
         </div>
 
+        <div className="xl:grid xl:grid-cols-[minmax(22rem,30rem)_minmax(0,1fr)] xl:items-start xl:gap-8">
+        <div className="xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:overscroll-contain">
         {/* Scanner — primary action, sticky at the top */}
-        <div className="sticky top-3 z-30 mb-6">
+        <div className="sticky top-3 z-30 mb-6 xl:top-0 xl:bg-slate-50 xl:pb-1">
           <div className="rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-lg ring-1 ring-black/5 backdrop-blur">
             <input
               ref={scannerRef}
@@ -474,7 +476,7 @@ export default function LabelScanner() {
           />
 
           {!isSearching && (
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:flex-col">
               <div className="flex-1 min-w-[140px]">
                 <label className="mb-1 block text-xs font-semibold text-slate-500">From</label>
                 <input
@@ -528,7 +530,9 @@ export default function LabelScanner() {
             </div>
           )}
         </div>
+        </div>
 
+        <div className="min-w-0">
         {/* Table */}
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">
@@ -657,6 +661,8 @@ export default function LabelScanner() {
             </button>
           </div>
         </details>
+        </div>
+        </div>
       </div>
 
       {showDuplicate && (
@@ -672,11 +678,11 @@ export default function LabelScanner() {
 
 function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 xl:p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-400 sm:text-sm">
         {label}
       </p>
-      <p className={`mt-1 text-2xl font-bold tabular-nums sm:text-4xl ${accent}`}>
+      <p className={`mt-1 text-2xl font-bold tabular-nums sm:text-4xl xl:text-3xl ${accent}`}>
         {value.toLocaleString()}
       </p>
     </div>
