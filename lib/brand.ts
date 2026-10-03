@@ -11,5 +11,9 @@ export const brandTagline =
 export const allowedEmailDomain =
   process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN ?? 'aerisbeaute.com';
 
+// Picklist order lookup is an FTI warehouse workflow. Aeris keeps the
+// original scan table and does not call the picklist RPCs.
+export const picklistsEnabled = allowedEmailDomain === 'fromthisisland.com';
+
 export const brandDescription =
   'Warehouse label scanning and shipping throughput tracker.';

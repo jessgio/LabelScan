@@ -4,10 +4,11 @@ import { useEffect } from 'react';
 
 interface DuplicateModalProps {
   label: string;
+  orderNumber?: string | null;
   onClose: () => void;
 }
 
-export default function DuplicateModal({ label, onClose }: DuplicateModalProps) {
+export default function DuplicateModal({ label, orderNumber, onClose }: DuplicateModalProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter') onClose();
@@ -35,6 +36,11 @@ export default function DuplicateModal({ label, onClose }: DuplicateModalProps) 
 
         <div className="my-6 rounded-2xl bg-slate-800 p-4">
           <p className="break-all font-mono text-lg text-rose-300 sm:text-xl">{label}</p>
+          {orderNumber !== undefined && (
+            <p className="mt-2 break-all font-mono text-sm text-slate-200">
+              {orderNumber ?? 'No match'}
+            </p>
+          )}
         </div>
 
         <p className="mb-7 text-sm text-slate-400 sm:text-base">
