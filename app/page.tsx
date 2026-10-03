@@ -32,6 +32,10 @@ const PicklistUploads = picklistsEnabled
   ? dynamic(() => import('@/components/PicklistUploads'))
   : null;
 
+const ChannelUploads = picklistsEnabled
+  ? dynamic(() => import('@/components/ChannelUploads'))
+  : null;
+
 function todayStr() {
   return todayInAppTimezone();
 }
@@ -60,7 +64,19 @@ export default function LabelScanner() {
   const [duplicateOrder, setDuplicateOrder] = useState<string | null | undefined>(undefined);
   const [orders, setOrders] = useState<Record<string, string>>({});
   const [orderProgress, setOrderProgress] = useState({ total: 0, scanned: 0, left: 0 });
+  const [channelProgress, setChannelProgress] = useState({
+    due: 0,
+    scanned: 0,
+    left: 0,
+    other: 0,
+    overdue: 0,
+    shopeeDue: 0,
+    shopeeScanned: 0,
+    tiktokDue: 0,
+    tiktokScanned: 0,
+  });
   const [picklistToken, setPicklistToken] = useState(0);
+  const [channelToken, setChannelToken] = useState(0);
 
   const scannerRef = useRef<HTMLInputElement>(null);
   const deleteDaysRef = useRef<HTMLSelectElement>(null);
@@ -109,7 +125,7 @@ export default function LabelScanner() {
             .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
         };
 
-        const [rowsRes, statsRes, progressRes] = await Promise.all([
+        const [rowsRes, statsRes, progressRes, channelRes] = await Promise.all([
           buildRowQuery(),
           supabase.rpc('get_scan_stats', {
             p_start: startDateTime,
@@ -122,12 +138,19 @@ export default function LabelScanner() {
                 p_end: endDateTime,
               })
             : Promise.resolve({ data: null, error: null }),
+          picklistsEnabled
+            ? supabase.rpc('get_channel_progress', {
+                p_start: startDateTime,
+                p_end: endDateTime,
+              })
+            : Promise.resolve({ data: null, error: null }),
         ]);
 
         if (id !== requestId.current) return;
         if (rowsRes.error) throw rowsRes.error;
         if (statsRes.error) throw statsRes.error;
         if (progressRes.error) throw progressRes.error;
+        if (channelRes.error) throw channelRes.error;
 
         const progress = (
           Array.isArray(progressRes.data) ? progressRes.data[0] : progressRes.data
@@ -139,6 +162,33 @@ export default function LabelScanner() {
             total: totalOrders,
             scanned: scannedOrders,
             left: Number(progress?.remaining_orders ?? Math.max(totalOrders - scannedOrders, 0)),
+          });
+
+          const channel = (
+            Array.isArray(channelRes.data) ? channelRes.data[0] : channelRes.data
+          ) as {
+            due_orders: number;
+            scanned_orders: number;
+            remaining_orders: number;
+            other_day_orders: number;
+            overdue_orders: number;
+            shopee_due: number;
+            shopee_scanned: number;
+            tiktok_due: number;
+            tiktok_scanned: number;
+          } | null;
+          const dueOrders = Number(channel?.due_orders ?? 0);
+          const dueScanned = Number(channel?.scanned_orders ?? 0);
+          setChannelProgress({
+            due: dueOrders,
+            scanned: dueScanned,
+            left: Number(channel?.remaining_orders ?? Math.max(dueOrders - dueScanned, 0)),
+            other: Number(channel?.other_day_orders ?? 0),
+            overdue: Number(channel?.overdue_orders ?? 0),
+            shopeeDue: Number(channel?.shopee_due ?? 0),
+            shopeeScanned: Number(channel?.shopee_scanned ?? 0),
+            tiktokDue: Number(channel?.tiktok_due ?? 0),
+            tiktokScanned: Number(channel?.tiktok_scanned ?? 0),
           });
         }
 
@@ -294,7 +344,10 @@ export default function LabelScanner() {
     setSearchTerm('');
     setStartDate(t);
     setEndDate(t);
-    if (picklistsEnabled) setPicklistToken((token) => token + 1);
+    if (picklistsEnabled) {
+      setPicklistToken((token) => token + 1);
+      setChannelToken((token) => token + 1);
+    }
     setCurrentPage(1);
     loadData(1);
   };
@@ -490,6 +543,60 @@ export default function LabelScanner() {
               title="Orders still to scan"
             />
           </div>
+        ) : null}
+
+        {picklistsEnabled ? (
+          <div className="mb-6">
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+              Ship by
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              <MiniStat
+                label="Due"
+                value={channelProgress.due}
+                title="Shopee and TikTok orders that must ship in this date range"
+              />
+              <MiniStat
+                label="Scanned"
+                value={channelProgress.scanned}
+                title="Due orders that already have a matching scan"
+              />
+              <MiniStat
+                label="Left"
+                value={channelProgress.left}
+                title="Due orders still to scan. This should reach 0."
+                accent={
+                  channelProgress.due > 0 && channelProgress.left === 0
+                    ? 'text-emerald-700'
+                    : channelProgress.left > 0
+                      ? 'text-rose-700'
+                      : undefined
+                }
+              />
+              <MiniStat
+                label="Other"
+                value={channelProgress.other}
+                title="Orders scanned in this date range that are due on a different day"
+              />
+            </div>
+            <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
+              Left should reach 0. Other is scanned work due on a different day.
+              {channelProgress.shopeeDue + channelProgress.tiktokDue > 0
+                ? ` Shopee ${channelProgress.shopeeScanned}/${channelProgress.shopeeDue} · TikTok ${channelProgress.tiktokScanned}/${channelProgress.tiktokDue}.`
+                : ''}
+              {channelProgress.overdue > 0
+                ? ` ${channelProgress.overdue} still open from earlier days.`
+                : ''}
+            </p>
+          </div>
+        ) : null}
+
+        {ChannelUploads ? (
+          <ChannelUploads
+            refreshToken={channelToken}
+            onChanged={reloadScans}
+            notify={notify}
+          />
         ) : null}
 
         {PicklistUploads ? (
@@ -719,11 +826,21 @@ export default function LabelScanner() {
   );
 }
 
-function MiniStat({ label, value, title }: { label: string; value: number; title: string }) {
+function MiniStat({
+  label,
+  value,
+  title,
+  accent,
+}: {
+  label: string;
+  value: number;
+  title: string;
+  accent?: string;
+}) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm" title={title}>
+    <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm" title={title}>
       <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="text-lg font-bold tabular-nums leading-tight text-slate-900">
+      <p className={`text-lg font-bold tabular-nums leading-tight ${accent ?? 'text-slate-900'}`}>
         {value.toLocaleString()}
       </p>
     </div>
