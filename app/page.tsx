@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import DuplicateModal from '@/components/DuplicateModal';
-import { brandName, brandTagline } from '@/lib/brand';
+import { brandName, brandTagline, picklistsEnabled } from '@/lib/brand';
 import { formatInAppTimezone, rangeIso, todayInAppTimezone } from '@/lib/dates';
+import { lookupOrders } from '@/lib/orders';
 import { escapeIlike } from '@/lib/search';
 
 interface Scan {
@@ -25,6 +27,10 @@ type Feedback = { type: 'success' | 'error'; message: string } | null;
 
 const PAGE_SIZE = 50;
 const SCAN_COLUMNS = 'id,label,scanned_at,is_duplicate';
+
+const PicklistUploads = picklistsEnabled
+  ? dynamic(() => import('@/components/PicklistUploads'))
+  : null;
 
 function todayStr() {
   return todayInAppTimezone();
@@ -51,6 +57,9 @@ export default function LabelScanner() {
 
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateLabel, setDuplicateLabel] = useState('');
+  const [duplicateOrder, setDuplicateOrder] = useState<string | null | undefined>(undefined);
+  const [orders, setOrders] = useState<Record<string, string>>({});
+  const [picklistToken, setPicklistToken] = useState(0);
 
   const scannerRef = useRef<HTMLInputElement>(null);
   const deleteDaysRef = useRef<HTMLSelectElement>(null);
@@ -123,7 +132,14 @@ export default function LabelScanner() {
           return;
         }
 
+        const orderMap =
+          picklistsEnabled && rows.length > 0
+            ? await lookupOrders(rows.map((row) => row.label))
+            : {};
+        if (id !== requestId.current) return;
+
         setScans(rows);
+        setOrders(orderMap);
         setStats({
           total: Number(stat?.total ?? 0),
           duplicates: Number(stat?.duplicates ?? 0),
@@ -147,6 +163,10 @@ export default function LabelScanner() {
     loadRef.current = loadData;
     pageRef.current = currentPage;
   }, [loadData, currentPage]);
+
+  const reloadScans = useCallback(() => {
+    void loadRef.current(pageRef.current);
+  }, []);
 
   // Load whenever filters or the page change (deferred to satisfy the
   // "no setState directly in effect" rule and to debounce naturally).
@@ -182,19 +202,24 @@ export default function LabelScanner() {
     setLabel('');
 
     try {
-      const { data, error: insertError } = await supabase.rpc('insert_scan', {
-        p_label: trimmed,
-      });
+      const [{ data, error: insertError }, orderMap] = await Promise.all([
+        supabase.rpc('insert_scan', { p_label: trimmed }),
+        picklistsEnabled ? lookupOrders([trimmed]).catch(() => null) : Promise.resolve(null),
+      ]);
       if (insertError) throw insertError;
 
       const row = (Array.isArray(data) ? data[0] : data) as Scan | undefined;
       const isDuplicate = row?.is_duplicate ?? false;
+      const orderNumber = orderMap ? (orderMap[trimmed] ?? null) : undefined;
+      const match =
+        orderNumber === undefined ? '' : orderNumber ? ` · ${orderNumber}` : ' · No match';
 
       if (isDuplicate) {
         setDuplicateLabel(trimmed);
+        setDuplicateOrder(orderNumber);
         setShowDuplicate(true);
       } else {
-        notify('success', `Saved "${trimmed}"`);
+        notify('success', `Saved "${trimmed}"${match}`);
       }
       // Reload even if realtime is disconnected, so a saved scan is visible.
       loadData(currentPage);
@@ -248,6 +273,7 @@ export default function LabelScanner() {
     setSearchTerm('');
     setStartDate(t);
     setEndDate(t);
+    if (picklistsEnabled) setPicklistToken((token) => token + 1);
     setCurrentPage(1);
     loadData(1);
   };
@@ -293,10 +319,27 @@ export default function LabelScanner() {
         return;
       }
 
-      const headers = ['Label', 'Scanned At', 'Is Duplicate'];
+      const orderMap = picklistsEnabled
+        ? await lookupOrders(all.map((scan) => scan.label))
+        : {};
+      const headers = picklistsEnabled
+        ? ['Label', 'Order', 'Scanned At', 'Is Duplicate']
+        : ['Label', 'Scanned At', 'Is Duplicate'];
       const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
       const rows = all.map((s) =>
-        [s.label, formatInAppTimezone(s.scanned_at), s.is_duplicate ? 'Yes' : 'No']
+        (picklistsEnabled
+          ? [
+              s.label,
+              orderMap[s.label] ?? 'No match',
+              formatInAppTimezone(s.scanned_at),
+              s.is_duplicate ? 'Yes' : 'No',
+            ]
+          : [
+              s.label,
+              formatInAppTimezone(s.scanned_at),
+              s.is_duplicate ? 'Yes' : 'No',
+            ]
+        )
           .map(escape)
           .join(','),
       );
@@ -406,6 +449,14 @@ export default function LabelScanner() {
           <StatCard label="Unique" value={stats.unique} accent="text-brand" />
         </div>
 
+        {PicklistUploads ? (
+          <PicklistUploads
+            refreshToken={picklistToken}
+            onChanged={reloadScans}
+            notify={notify}
+          />
+        ) : null}
+
         {/* Filters */}
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -488,10 +539,15 @@ export default function LabelScanner() {
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left">
+            <table
+              className={`w-full text-left ${picklistsEnabled ? 'min-w-[720px]' : 'min-w-[560px]'}`}
+            >
               <thead className="bg-slate-800 text-white">
                 <tr>
                   <th className="p-3 text-sm font-semibold sm:p-4">Label</th>
+                  {picklistsEnabled && (
+                    <th className="p-3 text-sm font-semibold sm:p-4">Order</th>
+                  )}
                   <th className="p-3 text-sm font-semibold sm:p-4">Time</th>
                   <th className="p-3 text-sm font-semibold sm:p-4">Status</th>
                   <th className="w-16 p-3 text-sm font-semibold sm:p-4">·</th>
@@ -500,7 +556,7 @@ export default function LabelScanner() {
               <tbody className="divide-y divide-slate-100">
                 {scans.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-10 text-center text-slate-400">
+                    <td colSpan={picklistsEnabled ? 5 : 4} className="p-10 text-center text-slate-400">
                       {isLoading ? 'Loading…' : 'No scans found'}
                     </td>
                   </tr>
@@ -510,6 +566,15 @@ export default function LabelScanner() {
                       <td className="p-3 font-mono text-sm text-slate-900 sm:p-4 sm:text-base">
                         {scan.label}
                       </td>
+                      {picklistsEnabled && (
+                        <td className="p-3 font-mono text-sm sm:p-4">
+                          {orders[scan.label] ? (
+                            <span className="font-semibold text-slate-900">{orders[scan.label]}</span>
+                          ) : (
+                            <span className="text-slate-400">No match</span>
+                          )}
+                        </td>
+                      )}
                       <td className="whitespace-nowrap p-3 text-sm text-slate-500 sm:p-4">
                         {formatInAppTimezone(scan.scanned_at)}
                       </td>
@@ -594,7 +659,13 @@ export default function LabelScanner() {
         </details>
       </div>
 
-      {showDuplicate && <DuplicateModal label={duplicateLabel} onClose={closeDuplicate} />}
+      {showDuplicate && (
+        <DuplicateModal
+          label={duplicateLabel}
+          orderNumber={picklistsEnabled ? duplicateOrder : undefined}
+          onClose={closeDuplicate}
+        />
+      )}
     </main>
   );
 }
