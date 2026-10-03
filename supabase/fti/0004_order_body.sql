@@ -1,75 +1,7 @@
 -- FTI only. Do not apply this to the Aeris label-scan project.
--- Picklists accumulate. A new upload does not remove earlier files.
--- Column C is the resi that is scanned. Column H is the order number.
-
-create schema if not exists private;
-revoke all on schema private from public;
-grant usage on schema private to authenticated, service_role;
-
-create table if not exists public.picklist_files (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid default auth.uid() references auth.users (id) on delete set null,
-  filename text not null check (char_length(filename) between 1 and 300),
-  row_count integer not null check (row_count >= 0),
-  uploaded_at timestamptz not null default now()
-);
-
-create table if not exists public.picklist_entries (
-  file_id uuid not null references public.picklist_files (id) on delete cascade,
-  resi_key text not null check (char_length(resi_key) between 1 and 200),
-  order_number text not null check (char_length(order_number) between 1 and 200),
-  order_key text not null check (char_length(order_key) between 1 and 200),
-  order_suffix text,
-  uploaded_at timestamptz not null,
-  primary key (file_id, resi_key)
-);
-
-create index if not exists picklist_entries_resi_recent_idx
-  on public.picklist_entries (resi_key, uploaded_at desc);
-
-create index if not exists picklist_entries_order_recent_idx
-  on public.picklist_entries (order_key, uploaded_at desc);
-
-create index if not exists picklist_entries_suffix_recent_idx
-  on public.picklist_entries (order_suffix, uploaded_at desc)
-  where order_suffix is not null;
-
-create index if not exists picklist_files_uploaded_idx
-  on public.picklist_files (uploaded_at desc);
-
-alter table public.picklist_files enable row level security;
-alter table public.picklist_files force row level security;
-alter table public.picklist_entries enable row level security;
-alter table public.picklist_entries force row level security;
-
-revoke all on public.picklist_files from public, anon;
-revoke all on public.picklist_entries from public, anon;
-grant select, delete on public.picklist_files to authenticated, service_role;
-grant select on public.picklist_entries to authenticated, service_role;
-
-create or replace function private.can_use_picklists()
-returns boolean
-language plpgsql
-stable
-security invoker
-set search_path = ''
-as $$
-declare
-  allowed boolean;
-begin
-  if (select auth.uid()) is null then
-    return false;
-  end if;
-  if to_regprocedure('public.is_company_user()') is null then
-    return true;
-  end if;
-  execute 'select public.is_company_user()' into allowed;
-  return coalesce(allowed, false);
-end;
-$$;
-
-revoke all on function private.can_use_picklists() from public, anon;
-grant execute on function private.can_use_picklists() to authenticated, service_role;
+-- Instant and same-day labels barcode the marketplace order, not a resi.
+-- Strip Jubelio's channel prefix and trailing shop id so that barcode can
+-- match column H when column C does not.
 
 -- Jubelio stores Shopee orders as SP-<order>, and TikTok / Tokopedia / Lazada
 -- orders as TT-|TP-|LZ-<order>-<shop id>. Instant labels barcode the order
@@ -261,15 +193,6 @@ $$;
 revoke all on function public.lookup_orders(text[]) from public, anon;
 grant execute on function public.lookup_orders(text[]) to authenticated, service_role;
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'picklist_files'
-  ) then
-    alter publication supabase_realtime add table public.picklist_files;
-  end if;
-end $$;
+update public.picklist_entries
+set order_suffix = private.order_body(order_number)
+where order_suffix is distinct from private.order_body(order_number);
