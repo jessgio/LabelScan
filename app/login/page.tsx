@@ -7,6 +7,19 @@ import { allowedEmailDomain, brandMark, brandName } from '@/lib/brand';
 
 const ALLOWED_DOMAIN = allowedEmailDomain;
 
+type AuthFailure = { code?: string; message?: string };
+
+function isEmailRateLimit(error: AuthFailure) {
+  return (
+    error.code === 'over_email_send_rate_limit' ||
+    /email rate limit exceeded/i.test(error.message ?? '')
+  );
+}
+
+function isEmailNotConfirmed(error: AuthFailure) {
+  return error.code === 'email_not_confirmed' || /email not confirmed/i.test(error.message ?? '');
+}
+
 function LoginForm() {
   const router = useRouter();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -35,14 +48,36 @@ function LoginForm() {
           password,
           options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
         });
-        if (error) throw error;
-        if (data.session) {
+        // The built-in mailer returns this after a couple of confirmation emails
+        // per hour, even when the account was created. Sign in when it is already
+        // confirmed; otherwise keep the email-confirmation path.
+        if (error && !isEmailRateLimit(error)) throw error;
+        if (data?.session) {
           router.replace('/');
           router.refresh();
-        } else {
+          return;
+        }
+
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+        if (!signInError) {
+          router.replace('/');
+          router.refresh();
+          return;
+        }
+        if (!error && isEmailNotConfirmed(signInError)) {
           setInfo('Account created. Check your email to confirm, then sign in.');
           setMode('signin');
+          return;
         }
+        if (error && isEmailRateLimit(error)) {
+          throw new Error(
+            'Supabase is limiting confirmation emails right now. Wait a few minutes, then sign in or try again.',
+          );
+        }
+        throw signInError;
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
