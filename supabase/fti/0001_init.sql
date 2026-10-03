@@ -235,6 +235,13 @@ begin
      or lower(split_part(trim(new.email), '@', 2)) is distinct from 'fromthisisland.com' then
     raise exception 'Only @fromthisisland.com email addresses are allowed to sign up';
   end if;
+
+  -- The built-in Supabase mailer only sends a couple of confirmation emails per hour.
+  -- Company addresses are already restricted above, so confirm them at creation.
+  if tg_op = 'INSERT' and new.email_confirmed_at is null then
+    new.email_confirmed_at := pg_catalog.now();
+  end if;
+
   return new;
 end;
 $$;
