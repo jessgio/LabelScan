@@ -12,6 +12,7 @@ type PicklistFile = {
 };
 
 const VISIBLE_FILES = 8;
+const OPEN_STORAGE_KEY = 'picklists-panel-open';
 
 export default function PicklistUploads({
   refreshToken,
@@ -27,6 +28,27 @@ export default function PicklistUploads({
   const [hiddenCount, setHiddenCount] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(OPEN_STORAGE_KEY) === '0') setOpen(false);
+    } catch {
+      // Keep the panel open when storage is unavailable.
+    }
+  }, []);
+
+  const toggle = () => {
+    setOpen((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(OPEN_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // The choice still applies for this visit.
+      }
+      return next;
+    });
+  };
 
   const loadFiles = useCallback(async () => {
     const { count, error: countError } = await supabase
@@ -112,67 +134,88 @@ export default function PicklistUploads({
     onChanged();
   };
 
+  const fileCount = files.length + hiddenCount;
+
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between xl:flex-col">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-800">Picklists</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Column C is the resi you scan. Column H is the order number. New files are added to the
-            ones already uploaded.
-          </p>
-        </div>
-        <div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void upload(file);
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-50"
-          >
-            {uploading ? 'Reading…' : 'Upload picklist'}
-          </button>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-slate-800">Picklists</h2>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          className="rounded-lg px-2 py-1 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+        >
+          {open ? 'Hide' : 'Show'}
+        </button>
       </div>
 
-      {warning && (
-        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">{warning}</p>
-      )}
-
-      {files.length > 0 && (
-        <ul className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-100">
-          {files.map((file) => (
-            <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-800">{file.filename}</p>
-                <p className="text-xs text-slate-500">
-                  {file.row_count.toLocaleString()} orders · {formatInAppTimezone(file.uploaded_at)}
-                </p>
-              </div>
+      {open ? (
+        <>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between xl:flex-col">
+            <p className="text-sm text-slate-500">
+              Column C is the resi you scan. Column H is the order number. New files are added to the
+              ones already uploaded.
+            </p>
+            <div>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void upload(file);
+                }}
+              />
               <button
                 type="button"
-                onClick={() => void remove(file)}
-                className="shrink-0 text-sm font-medium text-slate-500 transition hover:text-rose-700"
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-50"
               >
-                Remove
+                {uploading ? 'Reading…' : 'Upload picklist'}
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
+            </div>
+          </div>
 
-      {hiddenCount > 0 && (
-        <p className="mt-3 text-xs text-slate-500">
-          {hiddenCount} older {hiddenCount === 1 ? 'file is' : 'files are'} still used for matching.
+          {warning && (
+            <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">{warning}</p>
+          )}
+
+          {files.length > 0 && (
+            <ul className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-100">
+              {files.map((file) => (
+                <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-800">{file.filename}</p>
+                    <p className="text-xs text-slate-500">
+                      {file.row_count.toLocaleString()} orders · {formatInAppTimezone(file.uploaded_at)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void remove(file)}
+                    className="shrink-0 text-sm font-medium text-slate-500 transition hover:text-rose-700"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {hiddenCount > 0 && (
+            <p className="mt-3 text-xs text-slate-500">
+              {hiddenCount} older {hiddenCount === 1 ? 'file is' : 'files are'} still used for matching.
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="mt-1 text-xs text-slate-500">
+          {fileCount === 0
+            ? 'No files uploaded'
+            : `${fileCount} ${fileCount === 1 ? 'file' : 'files'} kept for matching`}
         </p>
       )}
     </section>

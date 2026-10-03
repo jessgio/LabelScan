@@ -59,6 +59,7 @@ export default function LabelScanner() {
   const [duplicateLabel, setDuplicateLabel] = useState('');
   const [duplicateOrder, setDuplicateOrder] = useState<string | null | undefined>(undefined);
   const [orders, setOrders] = useState<Record<string, string>>({});
+  const [orderProgress, setOrderProgress] = useState({ total: 0, scanned: 0, left: 0 });
   const [picklistToken, setPicklistToken] = useState(0);
 
   const scannerRef = useRef<HTMLInputElement>(null);
@@ -108,18 +109,38 @@ export default function LabelScanner() {
             .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
         };
 
-        const [rowsRes, statsRes] = await Promise.all([
+        const [rowsRes, statsRes, progressRes] = await Promise.all([
           buildRowQuery(),
           supabase.rpc('get_scan_stats', {
             p_start: startDateTime,
             p_end: endDateTime,
             p_search: escaped,
           }),
+          picklistsEnabled
+            ? supabase.rpc('get_order_progress', {
+                p_start: startDateTime,
+                p_end: endDateTime,
+              })
+            : Promise.resolve({ data: null, error: null }),
         ]);
 
         if (id !== requestId.current) return;
         if (rowsRes.error) throw rowsRes.error;
         if (statsRes.error) throw statsRes.error;
+        if (progressRes.error) throw progressRes.error;
+
+        const progress = (
+          Array.isArray(progressRes.data) ? progressRes.data[0] : progressRes.data
+        ) as { total_orders: number; scanned_orders: number; remaining_orders: number } | null;
+        if (picklistsEnabled) {
+          const totalOrders = Number(progress?.total_orders ?? 0);
+          const scannedOrders = Number(progress?.scanned_orders ?? 0);
+          setOrderProgress({
+            total: totalOrders,
+            scanned: scannedOrders,
+            left: Number(progress?.remaining_orders ?? Math.max(totalOrders - scannedOrders, 0)),
+          });
+        }
 
         const rows = (rowsRes.data ?? []) as Scan[];
         const stat = (Array.isArray(statsRes.data) ? statsRes.data[0] : statsRes.data) as
@@ -451,6 +472,26 @@ export default function LabelScanner() {
           <StatCard label="Unique" value={stats.unique} accent="text-brand" />
         </div>
 
+        {picklistsEnabled ? (
+          <div className="mb-6 grid grid-cols-3 gap-2">
+            <MiniStat
+              label="Orders"
+              value={orderProgress.total}
+              title="Unique orders uploaded in this date range"
+            />
+            <MiniStat
+              label="Scanned"
+              value={orderProgress.scanned}
+              title="Those orders with a matching scan in this date range"
+            />
+            <MiniStat
+              label="Left"
+              value={orderProgress.left}
+              title="Orders still to scan"
+            />
+          </div>
+        ) : null}
+
         {PicklistUploads ? (
           <PicklistUploads
             refreshToken={picklistToken}
@@ -476,30 +517,32 @@ export default function LabelScanner() {
           />
 
           {!isSearching && (
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:flex-col">
-              <div className="flex-1 min-w-[140px]">
-                <label className="mb-1 block text-xs font-semibold text-slate-500">From</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => {
-                    setStartDate(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand"
-                />
-              </div>
-              <div className="flex-1 min-w-[140px]">
-                <label className="mb-1 block text-xs font-semibold text-slate-500">To</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand"
-                />
+            <div className="mt-4 flex w-full flex-col gap-3 sm:flex-row sm:items-end xl:flex-col xl:items-stretch">
+              <div className="grid w-full min-w-0 flex-1 grid-cols-2 gap-3">
+                <div className="min-w-0">
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">From</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">To</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 text-base text-slate-900 outline-none focus:border-brand"
+                  />
+                </div>
               </div>
               <div className="flex gap-3">
                 <button
@@ -673,6 +716,17 @@ export default function LabelScanner() {
         />
       )}
     </main>
+  );
+}
+
+function MiniStat({ label, value, title }: { label: string; value: number; title: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm" title={title}>
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-lg font-bold tabular-nums leading-tight text-slate-900">
+        {value.toLocaleString()}
+      </p>
+    </div>
   );
 }
 
