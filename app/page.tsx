@@ -74,6 +74,7 @@ export default function LabelScanner() {
     shopeeScanned: 0,
     tiktokDue: 0,
     tiktokScanned: 0,
+    tokopediaScanned: 0,
   });
   const [picklistToken, setPicklistToken] = useState(0);
   const [channelToken, setChannelToken] = useState(0);
@@ -84,6 +85,17 @@ export default function LabelScanner() {
 
   const isSearching = debouncedSearch.trim() !== '';
   const totalPages = Math.max(1, Math.ceil(stats.total / PAGE_SIZE));
+  const channelBits: string[] = [];
+  if (channelProgress.shopeeDue + channelProgress.tiktokDue > 0) {
+    channelBits.push(
+      `Shopee ${channelProgress.shopeeScanned}/${channelProgress.shopeeDue}`,
+      `TikTok ${channelProgress.tiktokScanned}/${channelProgress.tiktokDue}`,
+    );
+  }
+  if (channelBits.length > 0 || channelProgress.tokopediaScanned > 0) {
+    channelBits.push(`Tokopedia ${channelProgress.tokopediaScanned}`);
+  }
+  const channelSplit = channelBits.join(' · ');
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -176,6 +188,7 @@ export default function LabelScanner() {
             shopee_scanned: number;
             tiktok_due: number;
             tiktok_scanned: number;
+            tokopedia_scanned: number;
           } | null;
           const dueOrders = Number(channel?.due_orders ?? 0);
           const dueScanned = Number(channel?.scanned_orders ?? 0);
@@ -189,6 +202,7 @@ export default function LabelScanner() {
             shopeeScanned: Number(channel?.shopee_scanned ?? 0),
             tiktokDue: Number(channel?.tiktok_due ?? 0),
             tiktokScanned: Number(channel?.tiktok_scanned ?? 0),
+            tokopediaScanned: Number(channel?.tokopedia_scanned ?? 0),
           });
         }
 
@@ -579,11 +593,12 @@ export default function LabelScanner() {
                 title="Orders scanned in this date range that are due on a different day"
               />
             </div>
-            <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
+            <p
+              className="mt-1.5 text-[11px] leading-4 text-slate-500"
+              title="Tokopedia is a Jubelio order numbered TP-…-89690. A scan of the resi, the full order, or the order body counts. The same resi can also be included in TikTok."
+            >
               Left should reach 0. Other is scanned work due on a different day.
-              {channelProgress.shopeeDue + channelProgress.tiktokDue > 0
-                ? ` Shopee ${channelProgress.shopeeScanned}/${channelProgress.shopeeDue} · TikTok ${channelProgress.tiktokScanned}/${channelProgress.tiktokDue}.`
-                : ''}
+              {channelSplit ? ` ${channelSplit}.` : ''}
               {channelProgress.overdue > 0
                 ? ` ${channelProgress.overdue} still open from earlier days.`
                 : ''}
