@@ -102,7 +102,6 @@ export default function LabelScanner() {
   if (channelBits.length > 0 || channelProgress.tokopediaScanned > 0) {
     channelBits.push(`Tokopedia ${channelProgress.tokopediaScanned}`);
   }
-  const channelSplit = channelBits.join(' · ');
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -612,16 +611,22 @@ export default function LabelScanner() {
                 title="Orders scanned in this date range that are due on a different day"
               />
             </div>
-            <p
-              className="mt-1.5 text-[11px] leading-4 text-slate-500"
-              title="Scanned/due for each channel. Instant and same-day come from Opsi Pengiriman on Shopee and Shipping Provider Name on TikTok. Tokopedia is a Jubelio order numbered TP-…-89690."
-            >
-              Left should reach 0. Other is scanned work due on a different day.
-              {channelSplit ? ` ${channelSplit}.` : ''}
-              {channelProgress.overdue > 0
-                ? ` ${channelProgress.overdue} still open from earlier days.`
-                : ''}
-            </p>
+            <div className="mt-1.5 text-[11px] leading-4 text-slate-500">
+              <p>Left should reach 0. Other is scanned work due on a different day.</p>
+              {channelBits.length > 0 ? (
+                <ul
+                  className="mt-1 space-y-0.5"
+                  title="Scanned/due for each channel. Instant and same-day come from Opsi Pengiriman on Shopee and Shipping Provider Name on TikTok. Tokopedia is a Jubelio order numbered TP-…-89690."
+                >
+                  {channelBits.map((bit) => (
+                    <li key={bit}>{bit}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {channelProgress.overdue > 0 ? (
+                <p className="mt-1">{channelProgress.overdue} still open from earlier days.</p>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
