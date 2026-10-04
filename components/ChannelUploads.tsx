@@ -171,13 +171,6 @@ export default function ChannelUploads({
 
       {open ? (
         <>
-          <p className="mt-3 text-sm text-slate-500">
-            Upload Shopee, TikTok, and Lazada exports. The same order number stays one order
-            across every file, including orders that have already moved to Sent. Shopee is due
-            by its ship-before time. TikTok orders from 15:00 onward are due the next day, and
-            Sunday moves to Monday. Lazada is due by Promised Shipping Time. Instant and same-day
-            come from Opsi Pengiriman on Shopee and Shipping Provider Name on TikTok.
-          </p>
           <div className="mt-3 grid gap-2">
             {CHANNELS.map((channel) => (
               <div key={channel.id} className="flex items-center justify-between gap-3">
