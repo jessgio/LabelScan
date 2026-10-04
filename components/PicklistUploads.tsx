@@ -11,7 +11,7 @@ type PicklistFile = {
   uploaded_at: string;
 };
 
-const VISIBLE_FILES = 8;
+const VISIBLE_FILES = 20;
 const OPEN_STORAGE_KEY = 'picklists-panel-open';
 
 export default function PicklistUploads({
@@ -165,6 +165,7 @@ export default function PicklistUploads({
                 className="sr-only"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
+                  event.target.value = '';
                   if (file) void upload(file);
                 }}
               />
@@ -184,7 +185,7 @@ export default function PicklistUploads({
           )}
 
           {files.length > 0 && (
-            <ul className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-100">
+            <ul className="mt-4 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100">
               {files.map((file) => (
                 <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
