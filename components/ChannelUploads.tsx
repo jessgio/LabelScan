@@ -12,7 +12,7 @@ type ChannelFile = {
   uploaded_at: string;
 };
 
-const VISIBLE_FILES = 8;
+const VISIBLE_FILES = 40;
 const OPEN_STORAGE_KEY = 'channels-panel-open';
 
 const CHANNELS = [
@@ -32,9 +32,10 @@ export default function ChannelUploads({
 }) {
   const shopeeRef = useRef<HTMLInputElement>(null);
   const tiktokRef = useRef<HTMLInputElement>(null);
+  const lazadaRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<ChannelFile[]>([]);
   const [hiddenCount, setHiddenCount] = useState(0);
-  const [uploading, setUploading] = useState<'shopee' | 'tiktok' | null>(null);
+  const [uploading, setUploading] = useState<'shopee' | 'tiktok' | 'lazada' | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
 
@@ -100,7 +101,7 @@ export default function ChannelUploads({
     };
   }, [loadFiles, onChanged]);
 
-  const upload = async (channel: 'shopee' | 'tiktok', file: File) => {
+  const upload = async (channel: 'shopee' | 'tiktok' | 'lazada', file: File) => {
     setUploading(channel);
     setWarning(null);
     try {
@@ -152,7 +153,7 @@ export default function ChannelUploads({
   };
 
   const fileCount = files.length + hiddenCount;
-  const inputFor = { shopee: shopeeRef, tiktok: tiktokRef } as const;
+  const inputFor = { shopee: shopeeRef, tiktok: tiktokRef, lazada: lazadaRef } as const;
 
   return (
     <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -170,38 +171,29 @@ export default function ChannelUploads({
 
       {open ? (
         <>
-          <p className="mt-3 text-sm text-slate-500">
-            Upload the Shopee and TikTok order exports. Shopee is due by its ship-before time.
-            TikTok orders from 15:00 onward are due the next day, and Sunday moves to Monday.
-          </p>
           <div className="mt-3 grid gap-2">
             {CHANNELS.map((channel) => (
               <div key={channel.id} className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium text-slate-700">{channel.label}</span>
-                {channel.id === 'lazada' ? (
-                  <span className="text-xs text-slate-400">Counting comes later</span>
-                ) : (
-                  <>
-                    <input
-                      ref={inputFor[channel.id]}
-                      type="file"
-                      accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-                      className="sr-only"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void upload(channel.id, file);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => inputFor[channel.id].current?.click()}
-                      disabled={uploading !== null}
-                      className="rounded-xl bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-50"
-                    >
-                      {uploading === channel.id ? 'Reading…' : 'Upload'}
-                    </button>
-                  </>
-                )}
+                <input
+                  ref={inputFor[channel.id]}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) void upload(channel.id, file);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => inputFor[channel.id].current?.click()}
+                  disabled={uploading !== null}
+                  className="rounded-xl bg-slate-800 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-900 disabled:opacity-50"
+                >
+                  {uploading === channel.id ? 'Reading…' : 'Upload'}
+                </button>
               </div>
             ))}
           </div>
@@ -211,7 +203,7 @@ export default function ChannelUploads({
           )}
 
           {files.length > 0 && (
-            <ul className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-100">
+            <ul className="mt-4 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100">
               {files.map((file) => (
                 <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">

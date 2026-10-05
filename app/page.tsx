@@ -75,6 +75,12 @@ export default function LabelScanner() {
     tiktokDue: 0,
     tiktokScanned: 0,
     tokopediaScanned: 0,
+    lazadaDue: 0,
+    lazadaScanned: 0,
+    shopeeInstant: 0,
+    shopeeRegular: 0,
+    tiktokInstant: 0,
+    tiktokRegular: 0,
   });
   const [picklistToken, setPicklistToken] = useState(0);
   const [channelToken, setChannelToken] = useState(0);
@@ -86,16 +92,16 @@ export default function LabelScanner() {
   const isSearching = debouncedSearch.trim() !== '';
   const totalPages = Math.max(1, Math.ceil(stats.total / PAGE_SIZE));
   const channelBits: string[] = [];
-  if (channelProgress.shopeeDue + channelProgress.tiktokDue > 0) {
+  if (channelProgress.shopeeDue + channelProgress.tiktokDue + channelProgress.lazadaDue > 0) {
     channelBits.push(
-      `Shopee ${channelProgress.shopeeScanned}/${channelProgress.shopeeDue}`,
-      `TikTok ${channelProgress.tiktokScanned}/${channelProgress.tiktokDue}`,
+      `Shopee ${channelProgress.shopeeScanned}/${channelProgress.shopeeDue} (${channelProgress.shopeeInstant} instant, ${channelProgress.shopeeRegular} regular)`,
+      `TikTok ${channelProgress.tiktokScanned}/${channelProgress.tiktokDue} (${channelProgress.tiktokInstant} instant, ${channelProgress.tiktokRegular} regular)`,
+      `Lazada ${channelProgress.lazadaScanned}/${channelProgress.lazadaDue}`,
     );
   }
   if (channelBits.length > 0 || channelProgress.tokopediaScanned > 0) {
     channelBits.push(`Tokopedia ${channelProgress.tokopediaScanned}`);
   }
-  const channelSplit = channelBits.join(' · ');
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -189,6 +195,12 @@ export default function LabelScanner() {
             tiktok_due: number;
             tiktok_scanned: number;
             tokopedia_scanned: number;
+            lazada_due: number;
+            lazada_scanned: number;
+            shopee_instant: number;
+            shopee_regular: number;
+            tiktok_instant: number;
+            tiktok_regular: number;
           } | null;
           const dueOrders = Number(channel?.due_orders ?? 0);
           const dueScanned = Number(channel?.scanned_orders ?? 0);
@@ -203,6 +215,12 @@ export default function LabelScanner() {
             tiktokDue: Number(channel?.tiktok_due ?? 0),
             tiktokScanned: Number(channel?.tiktok_scanned ?? 0),
             tokopediaScanned: Number(channel?.tokopedia_scanned ?? 0),
+            lazadaDue: Number(channel?.lazada_due ?? 0),
+            lazadaScanned: Number(channel?.lazada_scanned ?? 0),
+            shopeeInstant: Number(channel?.shopee_instant ?? 0),
+            shopeeRegular: Number(channel?.shopee_regular ?? 0),
+            tiktokInstant: Number(channel?.tiktok_instant ?? 0),
+            tiktokRegular: Number(channel?.tiktok_regular ?? 0),
           });
         }
 
@@ -568,7 +586,7 @@ export default function LabelScanner() {
               <MiniStat
                 label="Due"
                 value={channelProgress.due}
-                title="Shopee and TikTok orders that must ship in this date range"
+                title="Shopee, TikTok, and Lazada orders that must ship in this date range"
               />
               <MiniStat
                 label="Scanned"
@@ -593,16 +611,22 @@ export default function LabelScanner() {
                 title="Orders scanned in this date range that are due on a different day"
               />
             </div>
-            <p
-              className="mt-1.5 text-[11px] leading-4 text-slate-500"
-              title="Tokopedia is a Jubelio order numbered TP-…-89690. A scan of the resi, the full order, or the order body counts. The same resi can also be included in TikTok."
-            >
-              Left should reach 0. Other is scanned work due on a different day.
-              {channelSplit ? ` ${channelSplit}.` : ''}
-              {channelProgress.overdue > 0
-                ? ` ${channelProgress.overdue} still open from earlier days.`
-                : ''}
-            </p>
+            <div className="mt-1.5 text-[11px] leading-4 text-slate-500">
+              <p>Left should reach 0. Other is scanned work due on a different day.</p>
+              {channelBits.length > 0 ? (
+                <ul
+                  className="mt-1 space-y-0.5"
+                  title="Scanned/due for each channel. Instant and same-day come from Opsi Pengiriman on Shopee and Shipping Provider Name on TikTok. Tokopedia is a Jubelio order numbered TP-…-89690."
+                >
+                  {channelBits.map((bit) => (
+                    <li key={bit}>{bit}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {channelProgress.overdue > 0 ? (
+                <p className="mt-1">{channelProgress.overdue} still open from earlier days.</p>
+              ) : null}
+            </div>
           </div>
         ) : null}
 

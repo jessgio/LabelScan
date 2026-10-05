@@ -1,10 +1,13 @@
 import * as XLSX from 'xlsx';
 import { APP_TIMEZONE, shiftDay, zonedWallTimeToUtc } from './dates';
 
+export type ShippingSpeed = 'instant' | 'regular';
+
 export type ChannelOrder = {
   order_number: string;
   resi: string | null;
   due_at: string;
+  shipping_speed: ShippingSpeed;
 };
 
 export type ChannelParse = {
@@ -26,6 +29,15 @@ const EMPTY_CODE = new Set(['', '-', '—', 'N/A', 'NA', 'NULL']);
 export function isCodPayment(method: string) {
   const value = method.trim().toLowerCase().replace(/\s+/g, ' ');
   return value.includes('bayar di tempat') || value === 'cash on delivery' || value === 'cod';
+}
+
+/** Instant and same-day are written into the courier name. An empty cell is unknown. */
+export function shippingSpeed(name: string): ShippingSpeed | null {
+  const value = name.trim().toLowerCase();
+  if (!value || EMPTY_CODE.has(value.toUpperCase())) return null;
+  const compact = value.replace(/[\s_-]+/g, '');
+  if (compact.includes('sameday') || compact.includes('instan')) return 'instant';
+  return 'regular';
 }
 
 export function weekdayOfCivilDay(day: string) {
@@ -156,8 +168,9 @@ function shopeeColumns(headers: string[]) {
       header.startsWith('no resi '),
   );
   const due = columnIndex(headers, (header) => header.includes('pesanan harus dikirimkan'));
-  if (order < 0 || resi < 0 || due < 0) return null;
-  return { order, resi, due };
+  const shipping = columnIndex(headers, (header) => header === 'opsi pengiriman' || header.startsWith('opsi pengiriman '));
+  if (order < 0 || resi < 0 || due < 0 || shipping < 0) return null;
+  return { order, resi, due, shipping };
 }
 
 function tiktokColumns(headers: string[]) {
@@ -166,8 +179,44 @@ function tiktokColumns(headers: string[]) {
   const payment = columnIndex(headers, (header) => header === 'payment method');
   const created = columnIndex(headers, (header) => header === 'created time');
   const paid = columnIndex(headers, (header) => header === 'paid time');
-  if (order < 0 || payment < 0 || created < 0 || paid < 0) return null;
-  return { order, tracking, payment, created, paid };
+  const shipping = columnIndex(
+    headers,
+    (header) => header === 'shipping provider name' || header.startsWith('shipping provider name '),
+  );
+  if (order < 0 || payment < 0 || created < 0 || paid < 0 || shipping < 0) return null;
+  return { order, tracking, payment, created, paid, shipping };
+}
+
+function lazadaColumns(headers: string[]) {
+  const order = columnIndex(
+    headers,
+    (header) =>
+      header === 'ordernumber' ||
+      header === 'order number' ||
+      header === 'order no' ||
+      header === 'order no.' ||
+      header === 'nomor pesanan',
+  );
+  const resi = columnIndex(
+    headers,
+    (header) =>
+      header === 'trackingcode' ||
+      header === 'tracking code' ||
+      header === 'tracking number' ||
+      header === 'no. resi' ||
+      header === 'no resi',
+  );
+  const due = columnIndex(
+    headers,
+    (header) =>
+      header === 'promisedshippingtime' ||
+      header === 'promised shipping time' ||
+      header === 'promised shipping times' ||
+      header === 'ttssla' ||
+      header === 'tts sla',
+  );
+  if (order < 0 || resi < 0 || due < 0) return null;
+  return { order, resi, due };
 }
 
 function remember(
@@ -175,18 +224,20 @@ function remember(
   orderNumber: string,
   resi: string | null,
   dueAt: string,
+  speed: ShippingSpeed | null,
 ) {
   const previous = orders.get(orderNumber);
   orders.set(orderNumber, {
     order_number: orderNumber,
     resi: resi ?? previous?.resi ?? null,
     due_at: dueAt,
+    shipping_speed: speed ?? previous?.shipping_speed ?? 'regular',
   });
 }
 
 export function parseChannelWorkbook(
   workbook: XLSX.WorkBook,
-  channel: 'shopee' | 'tiktok',
+  channel: 'shopee' | 'tiktok' | 'lazada',
 ): ChannelParse {
   const orders = new Map<string, ChannelOrder>();
   let skippedRounded = 0;
@@ -204,7 +255,8 @@ export function parseChannelWorkbook(
       const headers = headersOf(sheet, row, range);
       const shopee = channel === 'shopee' ? shopeeColumns(headers) : null;
       const tiktok = channel === 'tiktok' ? tiktokColumns(headers) : null;
-      if (!shopee && !tiktok) continue;
+      const lazada = channel === 'lazada' ? lazadaColumns(headers) : null;
+      if (!shopee && !tiktok && !lazada) continue;
       foundHeader = true;
 
       for (let dataRow = row + 1; dataRow <= range.e.r; dataRow += 1) {
@@ -232,6 +284,33 @@ export function parseChannelWorkbook(
             orderNumber,
             resiCell.rounded ? null : cleanCode(resiCell.text),
             wallToIso(wall.day, wall.time),
+            shippingSpeed(readCell(sheet, dataRow, shopee.shipping).text),
+          );
+          continue;
+        }
+
+        if (lazada) {
+          const orderCell = readCell(sheet, dataRow, lazada.order);
+          const resiCell = readCell(sheet, dataRow, lazada.resi);
+          const dueCell = readCell(sheet, dataRow, lazada.due);
+          if (orderCell.rounded) {
+            skippedRounded += 1;
+            continue;
+          }
+          const orderNumber = cleanCode(orderCell.text);
+          if (!orderNumber) continue;
+          if (resiCell.rounded) skippedRounded += 1;
+          const wall = readWall(dueCell);
+          if (!wall) {
+            skippedNoDeadline += 1;
+            continue;
+          }
+          remember(
+            orders,
+            orderNumber,
+            resiCell.rounded ? null : cleanCode(resiCell.text),
+            wallToIso(wall.day, wall.time),
+            'regular',
           );
           continue;
         }
@@ -262,6 +341,7 @@ export function parseChannelWorkbook(
           orderNumber,
           trackingCell && !trackingCell.rounded ? cleanCode(trackingCell.text) : null,
           tiktokDueIso(wall.day, wall.time),
+          shippingSpeed(readCell(sheet, dataRow, tiktok.shipping).text),
         );
       }
       break;
@@ -270,18 +350,20 @@ export function parseChannelWorkbook(
   }
 
   if (!foundHeader) {
-    throw new Error(
+    const message =
       channel === 'shopee'
-        ? 'This Shopee file needs No. Pesanan, No. Resi, and Pesanan Harus Dikirimkan Sebelum.'
-        : 'This TikTok file needs Order ID, Payment Method, Created Time, and Paid Time.',
-    );
+        ? 'This Shopee file needs No. Pesanan, No. Resi, Pesanan Harus Dikirimkan Sebelum, and Opsi Pengiriman.'
+        : channel === 'tiktok'
+          ? 'This TikTok file needs Order ID, Payment Method, Created Time, Paid Time, and Shipping Provider Name.'
+          : 'This Lazada file needs an order number, a tracking code, and Promised Shipping Time.';
+    throw new Error(message);
   }
   if (orders.size > MAX_ORDERS) throw new Error('This export has too many orders.');
 
   return { orders: [...orders.values()], skippedRounded, skippedNoDeadline };
 }
 
-export async function parseChannelFile(file: File, channel: 'shopee' | 'tiktok') {
+export async function parseChannelFile(file: File, channel: 'shopee' | 'tiktok' | 'lazada') {
   if (file.size > MAX_BYTES) throw new Error('Channel files must be 12 MB or smaller.');
   const name = file.name.toLowerCase();
   if (!name.endsWith('.xlsx') && !name.endsWith('.xls') && !name.endsWith('.csv')) {
