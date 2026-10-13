@@ -11,6 +11,12 @@ type PicklistFile = {
   uploaded_at: string;
 };
 
+type MarketplaceCount = {
+  shopee: number;
+  tiktok: number;
+  lazada: number;
+};
+
 const VISIBLE_FILES = 20;
 const OPEN_STORAGE_KEY = 'picklists-panel-open';
 
@@ -25,6 +31,7 @@ export default function PicklistUploads({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<PicklistFile[]>([]);
+  const [counts, setCounts] = useState<Record<string, MarketplaceCount>>({});
   const [hiddenCount, setHiddenCount] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
@@ -63,8 +70,32 @@ export default function PicklistUploads({
       .limit(VISIBLE_FILES);
     if (error) throw error;
 
-    setFiles((data ?? []) as PicklistFile[]);
-    setHiddenCount(Math.max(0, (count ?? 0) - (data?.length ?? 0)));
+    const loaded = (data ?? []) as PicklistFile[];
+    setFiles(loaded);
+    setHiddenCount(Math.max(0, (count ?? 0) - loaded.length));
+
+    if (loaded.length === 0) {
+      setCounts({});
+      return;
+    }
+    const { data: split, error: splitError } = await supabase.rpc('picklist_marketplace_counts', {
+      p_file_ids: loaded.map((file) => file.id),
+    });
+    if (splitError) throw splitError;
+    const next: Record<string, MarketplaceCount> = {};
+    for (const row of (split ?? []) as {
+      file_id: string;
+      shopee_count: number;
+      tiktok_count: number;
+      lazada_count: number;
+    }[]) {
+      next[row.file_id] = {
+        shopee: Number(row.shopee_count ?? 0),
+        tiktok: Number(row.tiktok_count ?? 0),
+        lazada: Number(row.lazada_count ?? 0),
+      };
+    }
+    setCounts(next);
   }, []);
 
   useEffect(() => {
@@ -186,12 +217,22 @@ export default function PicklistUploads({
 
           {files.length > 0 && (
             <ul className="mt-4 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100">
-              {files.map((file) => (
+              {files.map((file) => {
+                const split = counts[file.id];
+                return (
                 <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-800">{file.filename}</p>
-                    <p className="text-xs text-slate-500">
-                      {file.row_count.toLocaleString()} orders · {formatInAppTimezone(file.uploaded_at)}
+                    <p
+                      className="text-xs text-slate-500"
+                      title="TikTok includes Tokopedia. Counts are unique order numbers in this file."
+                    >
+                      {file.row_count.toLocaleString()} orders
+                      {split
+                        ? ` · Shopee ${split.shopee.toLocaleString()} · TikTok ${split.tiktok.toLocaleString()} · Lazada ${split.lazada.toLocaleString()}`
+                        : ''}
+                      {' · '}
+                      {formatInAppTimezone(file.uploaded_at)}
                     </p>
                   </div>
                   <button
@@ -202,7 +243,8 @@ export default function PicklistUploads({
                     Remove
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
 

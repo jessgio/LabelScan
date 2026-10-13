@@ -34,6 +34,7 @@ export default function ChannelUploads({
   const tiktokRef = useRef<HTMLInputElement>(null);
   const lazadaRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<ChannelFile[]>([]);
+  const [marketplace, setMarketplace] = useState({ shopee: 0, tiktok: 0, lazada: 0 });
   const [hiddenCount, setHiddenCount] = useState(0);
   const [uploading, setUploading] = useState<'shopee' | 'tiktok' | 'lazada' | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -60,20 +61,33 @@ export default function ChannelUploads({
   };
 
   const loadFiles = useCallback(async () => {
-    const { count, error: countError } = await supabase
-      .from('channel_files')
-      .select('id', { count: 'exact', head: true });
-    if (countError) throw countError;
+    const [countRes, listRes, splitRes] = await Promise.all([
+      supabase.from('channel_files').select('id', { count: 'exact', head: true }),
+      supabase
+        .from('channel_files')
+        .select('id,channel,filename,row_count,uploaded_at')
+        .order('uploaded_at', { ascending: false })
+        .limit(VISIBLE_FILES),
+      supabase.rpc('channel_marketplace_counts'),
+    ]);
+    if (countRes.error) throw countRes.error;
+    if (listRes.error) throw listRes.error;
+    if (splitRes.error) throw splitRes.error;
 
-    const { data, error } = await supabase
-      .from('channel_files')
-      .select('id,channel,filename,row_count,uploaded_at')
-      .order('uploaded_at', { ascending: false })
-      .limit(VISIBLE_FILES);
-    if (error) throw error;
+    const loaded = (listRes.data ?? []) as ChannelFile[];
+    setFiles(loaded);
+    setHiddenCount(Math.max(0, (countRes.count ?? 0) - loaded.length));
 
-    setFiles((data ?? []) as ChannelFile[]);
-    setHiddenCount(Math.max(0, (count ?? 0) - (data?.length ?? 0)));
+    const row = (Array.isArray(splitRes.data) ? splitRes.data[0] : splitRes.data) as {
+      shopee_orders: number;
+      tiktok_orders: number;
+      lazada_orders: number;
+    } | null;
+    setMarketplace({
+      shopee: Number(row?.shopee_orders ?? 0),
+      tiktok: Number(row?.tiktok_orders ?? 0),
+      lazada: Number(row?.lazada_orders ?? 0),
+    });
   }, []);
 
   useEffect(() => {
@@ -174,7 +188,19 @@ export default function ChannelUploads({
           <div className="mt-3 grid gap-2">
             {CHANNELS.map((channel) => (
               <div key={channel.id} className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-slate-700">{channel.label}</span>
+                <span
+                  className="text-sm font-medium text-slate-700"
+                  title={
+                    channel.id === 'tiktok'
+                      ? 'Orders kept from TikTok uploads. Tokopedia orders in those files are included.'
+                      : 'Orders kept from uploads. A newer file replaces the same order number.'
+                  }
+                >
+                  {channel.label}
+                  <span className="ml-2 font-normal text-slate-500">
+                    {marketplace[channel.id].toLocaleString()}
+                  </span>
+                </span>
                 <input
                   ref={inputFor[channel.id]}
                   type="file"
