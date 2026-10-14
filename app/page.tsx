@@ -63,7 +63,14 @@ export default function LabelScanner() {
   const [duplicateLabel, setDuplicateLabel] = useState('');
   const [duplicateOrder, setDuplicateOrder] = useState<string | null | undefined>(undefined);
   const [orders, setOrders] = useState<Record<string, string>>({});
-  const [orderProgress, setOrderProgress] = useState({ total: 0, scanned: 0, left: 0 });
+  const [orderProgress, setOrderProgress] = useState({
+    total: 0,
+    scanned: 0,
+    left: 0,
+    shopee: 0,
+    tiktok: 0,
+    lazada: 0,
+  });
   const [channelProgress, setChannelProgress] = useState({
     due: 0,
     scanned: 0,
@@ -74,7 +81,6 @@ export default function LabelScanner() {
     shopeeScanned: 0,
     tiktokDue: 0,
     tiktokScanned: 0,
-    tokopediaScanned: 0,
     lazadaDue: 0,
     lazadaScanned: 0,
     shopeeInstant: 0,
@@ -99,9 +105,14 @@ export default function LabelScanner() {
       `Lazada ${channelProgress.lazadaScanned}/${channelProgress.lazadaDue}`,
     );
   }
-  if (channelBits.length > 0 || channelProgress.tokopediaScanned > 0) {
-    channelBits.push(`Tokopedia ${channelProgress.tokopediaScanned}`);
-  }
+  const picklistBits =
+    orderProgress.total > 0
+      ? [
+          `Shopee ${orderProgress.shopee.toLocaleString()}`,
+          `TikTok ${orderProgress.tiktok.toLocaleString()}`,
+          `Lazada ${orderProgress.lazada.toLocaleString()}`,
+        ]
+      : [];
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
@@ -172,7 +183,14 @@ export default function LabelScanner() {
 
         const progress = (
           Array.isArray(progressRes.data) ? progressRes.data[0] : progressRes.data
-        ) as { total_orders: number; scanned_orders: number; remaining_orders: number } | null;
+        ) as {
+          total_orders: number;
+          scanned_orders: number;
+          remaining_orders: number;
+          shopee_orders: number;
+          tiktok_orders: number;
+          lazada_orders: number;
+        } | null;
         if (picklistsEnabled) {
           const totalOrders = Number(progress?.total_orders ?? 0);
           const scannedOrders = Number(progress?.scanned_orders ?? 0);
@@ -180,6 +198,9 @@ export default function LabelScanner() {
             total: totalOrders,
             scanned: scannedOrders,
             left: Number(progress?.remaining_orders ?? Math.max(totalOrders - scannedOrders, 0)),
+            shopee: Number(progress?.shopee_orders ?? 0),
+            tiktok: Number(progress?.tiktok_orders ?? 0),
+            lazada: Number(progress?.lazada_orders ?? 0),
           });
 
           const channel = (
@@ -194,7 +215,6 @@ export default function LabelScanner() {
             shopee_scanned: number;
             tiktok_due: number;
             tiktok_scanned: number;
-            tokopedia_scanned: number;
             lazada_due: number;
             lazada_scanned: number;
             shopee_instant: number;
@@ -214,7 +234,6 @@ export default function LabelScanner() {
             shopeeScanned: Number(channel?.shopee_scanned ?? 0),
             tiktokDue: Number(channel?.tiktok_due ?? 0),
             tiktokScanned: Number(channel?.tiktok_scanned ?? 0),
-            tokopediaScanned: Number(channel?.tokopedia_scanned ?? 0),
             lazadaDue: Number(channel?.lazada_due ?? 0),
             lazadaScanned: Number(channel?.lazada_scanned ?? 0),
             shopeeInstant: Number(channel?.shopee_instant ?? 0),
@@ -558,22 +577,34 @@ export default function LabelScanner() {
         </div>
 
         {picklistsEnabled ? (
-          <div className="mb-6 grid grid-cols-3 gap-2">
-            <MiniStat
-              label="Orders"
-              value={orderProgress.total}
-              title="Unique orders uploaded in this date range"
-            />
-            <MiniStat
-              label="Scanned"
-              value={orderProgress.scanned}
-              title="Those orders with a matching scan in this date range"
-            />
-            <MiniStat
-              label="Left"
-              value={orderProgress.left}
-              title="Orders still to scan"
-            />
+          <div className="mb-6">
+            <div className="grid grid-cols-3 gap-2">
+              <MiniStat
+                label="Orders"
+                value={orderProgress.total}
+                title="Unique orders uploaded in this date range"
+              />
+              <MiniStat
+                label="Scanned"
+                value={orderProgress.scanned}
+                title="Those orders with a matching scan in this date range"
+              />
+              <MiniStat
+                label="Left"
+                value={orderProgress.left}
+                title="Orders still to scan"
+              />
+            </div>
+            {picklistBits.length > 0 ? (
+              <ul
+                className="mt-1.5 space-y-0.5 text-[11px] leading-4 text-slate-500"
+                title="Unique Jubelio orders in this date range. TikTok includes Tokopedia."
+              >
+                {picklistBits.map((bit) => (
+                  <li key={bit}>{bit}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 
@@ -616,7 +647,7 @@ export default function LabelScanner() {
               {channelBits.length > 0 ? (
                 <ul
                   className="mt-1 space-y-0.5"
-                  title="Scanned/due for each channel. Instant and same-day come from Opsi Pengiriman on Shopee and Shipping Provider Name on TikTok. Tokopedia is a Jubelio order numbered TP-…-89690."
+                  title="Scanned/due for each channel. TikTok includes Tokopedia orders from the TikTok file. Instant and same-day come from Opsi Pengiriman on Shopee and Shipping Provider Name on TikTok."
                 >
                   {channelBits.map((bit) => (
                     <li key={bit}>{bit}</li>

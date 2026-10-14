@@ -11,8 +11,20 @@ type PicklistFile = {
   uploaded_at: string;
 };
 
+type MarketplaceCount = {
+  shopee: number;
+  tiktok: number;
+  lazada: number;
+};
+
 const VISIBLE_FILES = 20;
 const OPEN_STORAGE_KEY = 'picklists-panel-open';
+
+const MARKETPLACES = [
+  { id: 'shopee', label: 'Shopee' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'lazada', label: 'Lazada' },
+] as const;
 
 export default function PicklistUploads({
   refreshToken,
@@ -25,6 +37,8 @@ export default function PicklistUploads({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<PicklistFile[]>([]);
+  const [counts, setCounts] = useState<Record<string, MarketplaceCount>>({});
+  const [totals, setTotals] = useState<MarketplaceCount>({ shopee: 0, tiktok: 0, lazada: 0 });
   const [hiddenCount, setHiddenCount] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
@@ -51,20 +65,56 @@ export default function PicklistUploads({
   };
 
   const loadFiles = useCallback(async () => {
-    const { count, error: countError } = await supabase
-      .from('picklist_files')
-      .select('id', { count: 'exact', head: true });
-    if (countError) throw countError;
+    const [countRes, listRes, totalsRes] = await Promise.all([
+      supabase.from('picklist_files').select('id', { count: 'exact', head: true }),
+      supabase
+        .from('picklist_files')
+        .select('id,filename,row_count,uploaded_at')
+        .order('uploaded_at', { ascending: false })
+        .limit(VISIBLE_FILES),
+      supabase.rpc('picklist_marketplace_totals'),
+    ]);
+    if (countRes.error) throw countRes.error;
+    if (listRes.error) throw listRes.error;
+    if (totalsRes.error) throw totalsRes.error;
 
-    const { data, error } = await supabase
-      .from('picklist_files')
-      .select('id,filename,row_count,uploaded_at')
-      .order('uploaded_at', { ascending: false })
-      .limit(VISIBLE_FILES);
-    if (error) throw error;
+    const loaded = (listRes.data ?? []) as PicklistFile[];
+    setFiles(loaded);
+    setHiddenCount(Math.max(0, (countRes.count ?? 0) - loaded.length));
 
-    setFiles((data ?? []) as PicklistFile[]);
-    setHiddenCount(Math.max(0, (count ?? 0) - (data?.length ?? 0)));
+    const totalRow = (Array.isArray(totalsRes.data) ? totalsRes.data[0] : totalsRes.data) as {
+      shopee_orders: number;
+      tiktok_orders: number;
+      lazada_orders: number;
+    } | null;
+    setTotals({
+      shopee: Number(totalRow?.shopee_orders ?? 0),
+      tiktok: Number(totalRow?.tiktok_orders ?? 0),
+      lazada: Number(totalRow?.lazada_orders ?? 0),
+    });
+
+    if (loaded.length === 0) {
+      setCounts({});
+      return;
+    }
+    const { data: split, error: splitError } = await supabase.rpc('picklist_marketplace_counts', {
+      p_file_ids: loaded.map((file) => file.id),
+    });
+    if (splitError) throw splitError;
+    const next: Record<string, MarketplaceCount> = {};
+    for (const row of (split ?? []) as {
+      file_id: string;
+      shopee_count: number;
+      tiktok_count: number;
+      lazada_count: number;
+    }[]) {
+      next[row.file_id] = {
+        shopee: Number(row.shopee_count ?? 0),
+        tiktok: Number(row.tiktok_count ?? 0),
+        lazada: Number(row.lazada_count ?? 0),
+      };
+    }
+    setCounts(next);
   }, []);
 
   useEffect(() => {
@@ -153,10 +203,29 @@ export default function PicklistUploads({
       {open ? (
         <>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between xl:flex-col">
-            <p className="text-sm text-slate-500">
-              Column C is the resi you scan. Column H is the order number. New files are added to the
-              ones already uploaded.
-            </p>
+            <div className="grid flex-1 gap-2">
+              <p className="text-sm text-slate-500">
+                Column C is the resi you scan. Column H is the order number. New files are added to the
+                ones already uploaded.
+              </p>
+              {MARKETPLACES.map((marketplace) => (
+                <div key={marketplace.id} className="flex items-center justify-between gap-3">
+                  <span
+                    className="text-sm font-medium text-slate-700"
+                    title={
+                      marketplace.id === 'tiktok'
+                        ? 'TikTok and Tokopedia orders on the uploaded picklists.'
+                        : 'Unique orders kept from the uploaded picklists.'
+                    }
+                  >
+                    {marketplace.label}
+                    <span className="ml-2 font-normal text-slate-500">
+                      {totals[marketplace.id].toLocaleString()}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
             <div>
               <input
                 ref={inputRef}
@@ -186,12 +255,22 @@ export default function PicklistUploads({
 
           {files.length > 0 && (
             <ul className="mt-4 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100">
-              {files.map((file) => (
+              {files.map((file) => {
+                const split = counts[file.id];
+                return (
                 <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-800">{file.filename}</p>
-                    <p className="text-xs text-slate-500">
-                      {file.row_count.toLocaleString()} orders · {formatInAppTimezone(file.uploaded_at)}
+                    <p
+                      className="text-xs text-slate-500"
+                      title="TikTok includes Tokopedia. Counts are unique order numbers in this file."
+                    >
+                      {file.row_count.toLocaleString()} orders
+                      {split
+                        ? ` · Shopee ${split.shopee.toLocaleString()} · TikTok ${split.tiktok.toLocaleString()} · Lazada ${split.lazada.toLocaleString()}`
+                        : ''}
+                      {' · '}
+                      {formatInAppTimezone(file.uploaded_at)}
                     </p>
                   </div>
                   <button
@@ -202,7 +281,8 @@ export default function PicklistUploads({
                     Remove
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
 
